@@ -1,0 +1,5 @@
+- [Drizzle double-where](drizzle-double-where.md) — cannot chain .where() twice on a select; use and() from drizzle-orm instead
+- [Express params typing](express-params-typing.md) — req.params values must be cast; use String(req.params["key"]) pattern
+- [EidSave seed workflow](eidsave-seed-workflow.md) — always push DB schema before running seed; seed is a separate esbuild entry
+- [Zod v3 vs v4 syntax](zod-v3-syntax.md) — workspace uses Zod v3; v4 API like z.email() and { error } are not available
+- [EidSave backend architecture](eidsave-backend-arch.md) — layered: schema→repository→service→controller→route; Redis via ioredis with graceful fallback

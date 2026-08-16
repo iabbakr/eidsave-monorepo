@@ -1,0 +1,26 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "vnlMj2qDqb8S-yw5AmVOE"
+uri = "file://artifacts/eidsave/assets/images/icon.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "faLf0-a4qV5-xueJsU8dW"
+uri = "file://artifacts/eidsave/assets/images/ram.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "y9KrgNk73whZlDuxpKwCE"
+uri = "file://artifacts/eidsave/assets/images/cow.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "SaZ9b4SFrNh8d9DJQuZa9"
+uri = "file://artifacts/eidsave/assets/images/goat.png"
+type = "image"
+title = "generated_image"

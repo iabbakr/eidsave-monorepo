@@ -1,0 +1,1891 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: EidSave API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: user
+    description: User profile operations
+  - name: wallet
+    description: Wallet and deposit operations
+  - name: animals
+    description: Animal catalog operations
+  - name: orders
+    description: Order operations
+  - name: groups
+    description: Contribution group operations
+  - name: support
+    description: Support ticket operations
+  - name: admin
+    description: Admin operations
+  - name: eid
+    description: Eid cycle and dates
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /v1/auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /v1/auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+
+  /v1/auth/set-pin:
+    post:
+      operationId: setPin
+      tags: [auth]
+      summary: Set a 6-digit PIN
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetPinRequest"
+      responses:
+        "200":
+          description: PIN set successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/auth/verify-pin:
+    post:
+      operationId: verifyPin
+      tags: [auth]
+      summary: Verify PIN
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyPinRequest"
+      responses:
+        "200":
+          description: PIN verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/user/profile:
+    get:
+      operationId: getUserProfile
+      tags: [user]
+      summary: Get current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    put:
+      operationId: updateUserProfile
+      tags: [user]
+      summary: Update user profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+
+  /v1/user/push-token:
+    post:
+      operationId: registerPushToken
+      tags: [user]
+      summary: Register FCM push token
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenRequest"
+      responses:
+        "200":
+          description: Token registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/wallet/{type}:
+    get:
+      operationId: getWallet
+      tags: [wallet]
+      summary: Get wallet balance and info
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [adha, fitr]
+      responses:
+        "200":
+          description: Wallet info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Wallet"
+
+  /v1/wallet/{type}/deposit/init:
+    post:
+      operationId: initDeposit
+      tags: [wallet]
+      summary: Initialize a deposit via Paystack
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [adha, fitr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositInitRequest"
+      responses:
+        "200":
+          description: Paystack authorization URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositInitResponse"
+
+  /v1/wallet/{type}/deposit/verify:
+    post:
+      operationId: verifyDeposit
+      tags: [wallet]
+      summary: Verify a deposit after payment
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [adha, fitr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepositVerifyRequest"
+      responses:
+        "200":
+          description: Deposit verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /v1/wallet/{type}/withdraw:
+    post:
+      operationId: withdrawFunds
+      tags: [wallet]
+      summary: Withdraw funds (only during unlock window)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [adha, fitr]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WithdrawRequest"
+      responses:
+        "200":
+          description: Withdrawal initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  /v1/wallet/{type}/transactions:
+    get:
+      operationId: getTransactions
+      tags: [wallet]
+      summary: Get transaction history for a wallet
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [adha, fitr]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionList"
+
+  /v1/animals:
+    get:
+      operationId: getAnimals
+      tags: [animals]
+      summary: Get the animal catalog
+      parameters:
+        - name: eidType
+          in: query
+          schema:
+            type: string
+            enum: [adha, fitr]
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Animal catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnimalList"
+
+  /v1/animals/{id}:
+    get:
+      operationId: getAnimal
+      tags: [animals]
+      summary: Get a single animal by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Animal detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Animal"
+
+  /v1/orders:
+    post:
+      operationId: placeOrder
+      tags: [orders]
+      summary: Place an animal order (Mode B)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaceOrderRequest"
+      responses:
+        "201":
+          description: Order placed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /v1/orders/mine:
+    get:
+      operationId: getMyOrders
+      tags: [orders]
+      summary: Get current user's orders
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User orders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderList"
+
+  /v1/orders/{orderId}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get a single order
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /v1/groups:
+    get:
+      operationId: getGroups
+      tags: [groups]
+      summary: Get contribution groups (Eid al-Fitr)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Groups list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupList"
+    post:
+      operationId: createGroup
+      tags: [groups]
+      summary: Create a new contribution group
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGroupRequest"
+      responses:
+        "201":
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+
+  /v1/groups/{groupId}:
+    get:
+      operationId: getGroup
+      tags: [groups]
+      summary: Get a single group
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Group detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Group"
+
+  /v1/groups/{groupId}/join:
+    post:
+      operationId: joinGroup
+      tags: [groups]
+      summary: Join a contribution group
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Joined group
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/groups/{groupId}/contribute:
+    post:
+      operationId: contributeToGroup
+      tags: [groups]
+      summary: Contribute to a group from Fitr wallet
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContributeRequest"
+      responses:
+        "200":
+          description: Contribution made
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/eid/dates:
+    get:
+      operationId: getEidDates
+      tags: [eid]
+      summary: Get Eid dates for both celebrations
+      responses:
+        "200":
+          description: Eid dates and cycles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EidDates"
+
+  /v1/support/ticket:
+    post:
+      operationId: createSupportTicket
+      tags: [support]
+      summary: Create a support ticket
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTicketRequest"
+      responses:
+        "201":
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicket"
+
+  /v1/support/tickets/mine:
+    get:
+      operationId: getMyTickets
+      tags: [support]
+      summary: Get current user's support tickets
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User tickets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketList"
+
+  /v1/admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get platform-wide statistics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /v1/admin/users:
+    get:
+      operationId: getAdminUsers
+      tags: [admin]
+      summary: Get all users with search
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUserList"
+
+  /v1/admin/animals:
+    post:
+      operationId: createAnimal
+      tags: [admin]
+      summary: Create a new animal listing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnimalRequest"
+      responses:
+        "201":
+          description: Animal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Animal"
+
+  /v1/admin/animals/{id}:
+    put:
+      operationId: updateAnimal
+      tags: [admin]
+      summary: Update an animal listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAnimalRequest"
+      responses:
+        "200":
+          description: Animal updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Animal"
+    delete:
+      operationId: deleteAnimal
+      tags: [admin]
+      summary: Delete an animal listing
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Animal deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/admin/orders:
+    get:
+      operationId: getAdminOrders
+      tags: [admin]
+      summary: Get all orders
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: eidType
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Orders list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderList"
+
+  /v1/admin/orders/{id}/status:
+    put:
+      operationId: updateOrderStatus
+      tags: [admin]
+      summary: Update an order's delivery status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusRequest"
+      responses:
+        "200":
+          description: Order status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /v1/admin/users/{id}/status:
+    put:
+      operationId: updateUserStatus
+      tags: [admin]
+      summary: Activate or deactivate a user account
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserStatusInput"
+      responses:
+        "200":
+          description: User status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/admin/notifications/broadcast:
+    post:
+      operationId: broadcastNotification
+      tags: [admin]
+      summary: Send a broadcast push notification to all users
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BroadcastNotificationInput"
+      responses:
+        "200":
+          description: Notification sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BroadcastResult"
+
+  /v1/admin/earnings:
+    get:
+      operationId: getAdminEarnings
+      tags: [admin]
+      summary: Get earnings analytics (deposits, withdrawals, by period)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month, year]
+            default: month
+      responses:
+        "200":
+          description: Earnings stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EarningsStats"
+
+  /v1/admin/maintenance/flush-cache:
+    post:
+      operationId: flushCache
+      tags: [admin]
+      summary: Flush the Redis cache
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Cache flushed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /v1/admin/support/tickets:
+    get:
+      operationId: getAdminTickets
+      tags: [admin]
+      summary: Get all support tickets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, resolved, closed]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+      responses:
+        "200":
+          description: All support tickets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TicketList"
+
+  /v1/admin/support/tickets/{id}/status:
+    put:
+      operationId: updateTicketStatus
+      tags: [admin]
+      summary: Update a support ticket status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTicketStatusInput"
+      responses:
+        "200":
+          description: Ticket status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupportTicket"
+
+  /v1/admin/upload/image:
+    post:
+      operationId: uploadImage
+      tags: [admin]
+      summary: Upload an image to Cloudinary and return the URL
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        "200":
+          description: Image uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadImageResponse"
+
+  /v1/webhooks/paystack:
+    post:
+      operationId: paystackWebhook
+      tags: [wallet]
+      summary: Paystack payment webhook
+      responses:
+        "200":
+          description: Webhook processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        success:
+          type: boolean
+      required:
+        - message
+        - success
+
+    RegisterRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        phone:
+          type: string
+        password:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        nextOfKin:
+          $ref: "#/components/schemas/NextOfKin"
+      required:
+        - name
+        - email
+        - phone
+        - password
+        - address
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+        requiresPin:
+          type: boolean
+      required:
+        - token
+        - user
+        - requiresPin
+
+    SetPinRequest:
+      type: object
+      properties:
+        pin:
+          type: string
+          minLength: 6
+          maxLength: 6
+      required:
+        - pin
+
+    VerifyPinRequest:
+      type: object
+      properties:
+        pin:
+          type: string
+          minLength: 6
+          maxLength: 6
+      required:
+        - pin
+
+    Address:
+      type: object
+      properties:
+        state:
+          type: string
+        city:
+          type: string
+        town:
+          type: string
+        street:
+          type: string
+      required:
+        - state
+        - city
+        - street
+
+    NextOfKin:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        relationship:
+          type: string
+      required:
+        - name
+        - phone
+        - relationship
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        nextOfKin:
+          $ref: "#/components/schemas/NextOfKin"
+        role:
+          type: string
+          enum: [user, admin, support]
+        isActive:
+          type: boolean
+        hasPin:
+          type: boolean
+        savingsStreak:
+          type: integer
+        referralCode:
+          type: string
+        profileComplete:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - phone
+        - role
+        - isActive
+        - hasPin
+        - savingsStreak
+        - referralCode
+        - profileComplete
+        - createdAt
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        nextOfKin:
+          $ref: "#/components/schemas/NextOfKin"
+
+    PushTokenRequest:
+      type: object
+      properties:
+        token:
+          type: string
+      required:
+        - token
+
+    Wallet:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+          enum: [adha, fitr]
+        balance:
+          type: number
+        mode:
+          type: string
+          enum: [withdraw, purchase, group, individual]
+        selectedAnimalId:
+          type: string
+          nullable: true
+        selectedAnimalSize:
+          type: string
+          nullable: true
+        lockedToPurchase:
+          type: boolean
+        withdrawalUnlockedAt:
+          type: string
+          format: date-time
+          nullable: true
+        isWithdrawalOpen:
+          type: boolean
+        targetAmount:
+          type: number
+          nullable: true
+        progressPercent:
+          type: number
+        cycleId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - type
+        - balance
+        - mode
+        - lockedToPurchase
+        - isWithdrawalOpen
+        - progressPercent
+        - cycleId
+        - updatedAt
+
+    DepositInitRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          minimum: 500
+          maximum: 500000
+      required:
+        - amount
+
+    DepositInitResponse:
+      type: object
+      properties:
+        authorizationUrl:
+          type: string
+        accessCode:
+          type: string
+        reference:
+          type: string
+      required:
+        - authorizationUrl
+        - accessCode
+        - reference
+
+    DepositVerifyRequest:
+      type: object
+      properties:
+        reference:
+          type: string
+      required:
+        - reference
+
+    WithdrawRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+        bankCode:
+          type: string
+        accountNumber:
+          type: string
+        accountName:
+          type: string
+      required:
+        - amount
+        - bankCode
+        - accountNumber
+        - accountName
+
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        type:
+          type: string
+          enum: [deposit, withdrawal, purchase, delivery_fee]
+        amount:
+          type: number
+        walletType:
+          type: string
+          enum: [adha, fitr]
+        status:
+          type: string
+          enum: [pending, success, failed]
+        reference:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - type
+        - amount
+        - walletType
+        - status
+        - reference
+        - createdAt
+
+    TransactionList:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - transactions
+        - total
+        - page
+        - totalPages
+
+    AnimalSize:
+      type: object
+      properties:
+        label:
+          type: string
+          enum: [Small, Medium, Large, XL]
+        weight:
+          type: string
+        price:
+          type: number
+        imageUrl:
+          type: string
+      required:
+        - label
+        - weight
+        - price
+
+    Animal:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+          enum: [Ram, Goat, Cow, Chicken, Duck, Ostrich]
+        subcategory:
+          type: string
+          nullable: true
+        description:
+          type: string
+        imageUrl:
+          type: string
+        sizes:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnimalSize"
+        isAvailable:
+          type: boolean
+        stock:
+          type: string
+          enum: [available, limited, out_of_stock]
+        eidType:
+          type: string
+          enum: [adha, fitr, both]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - category
+        - description
+        - imageUrl
+        - sizes
+        - isAvailable
+        - stock
+        - eidType
+        - createdAt
+
+    AnimalList:
+      type: object
+      properties:
+        animals:
+          type: array
+          items:
+            $ref: "#/components/schemas/Animal"
+      required:
+        - animals
+
+    OrderRecipient:
+      type: object
+      properties:
+        name:
+          type: string
+        phone:
+          type: string
+        address:
+          $ref: "#/components/schemas/Address"
+        deliveryFee:
+          type: number
+      required:
+        - name
+        - phone
+        - address
+        - deliveryFee
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        animalId:
+          type: string
+        animalName:
+          type: string
+        size:
+          type: string
+        quantity:
+          type: integer
+        totalPrice:
+          type: number
+        deliveryFee:
+          type: number
+        recipients:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderRecipient"
+        status:
+          type: string
+          enum: [pending, confirmed, dispatched, delivered]
+        eidType:
+          type: string
+          enum: [adha, fitr]
+        cycleId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - userId
+        - animalId
+        - animalName
+        - size
+        - quantity
+        - totalPrice
+        - deliveryFee
+        - recipients
+        - status
+        - eidType
+        - cycleId
+        - createdAt
+
+    OrderList:
+      type: object
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/Order"
+      required:
+        - orders
+
+    PlaceOrderRequest:
+      type: object
+      properties:
+        animalId:
+          type: string
+        size:
+          type: string
+          enum: [Small, Medium, Large, XL]
+        quantity:
+          type: integer
+          minimum: 1
+        eidType:
+          type: string
+          enum: [adha, fitr]
+        recipients:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              phone:
+                type: string
+              address:
+                $ref: "#/components/schemas/Address"
+            required:
+              - name
+              - phone
+              - address
+      required:
+        - animalId
+        - size
+        - quantity
+        - eidType
+        - recipients
+
+    Group:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        adminUid:
+          type: string
+        memberCount:
+          type: integer
+        memberLimit:
+          type: integer
+        targetAmount:
+          type: number
+        currentBalance:
+          type: number
+        progressPercent:
+          type: number
+        animalId:
+          type: string
+          nullable: true
+        deliveryAddress:
+          $ref: "#/components/schemas/Address"
+          nullable: true
+        status:
+          type: string
+          enum: [open, funded, ordered, delivered, closed]
+        eidType:
+          type: string
+          enum: [fitr]
+        isMember:
+          type: boolean
+        myContribution:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - adminUid
+        - memberCount
+        - memberLimit
+        - targetAmount
+        - currentBalance
+        - progressPercent
+        - status
+        - eidType
+        - isMember
+        - myContribution
+        - createdAt
+
+    GroupList:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+      required:
+        - groups
+
+    CreateGroupRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        memberLimit:
+          type: integer
+          minimum: 2
+        animalId:
+          type: string
+      required:
+        - name
+        - memberLimit
+
+    ContributeRequest:
+      type: object
+      properties:
+        amount:
+          type: number
+          minimum: 500
+      required:
+        - amount
+
+    EidCycle:
+      type: object
+      properties:
+        id:
+          type: string
+        eidType:
+          type: string
+          enum: [adha, fitr]
+        year:
+          type: integer
+        eidDate:
+          type: string
+          format: date
+        withdrawalUnlockDate:
+          type: string
+          format: date
+        deliveryStartDate:
+          type: string
+          format: date
+        deliveryEndDate:
+          type: string
+          format: date
+        isActive:
+          type: boolean
+        daysUntilEid:
+          type: integer
+        hijriDate:
+          type: string
+      required:
+        - id
+        - eidType
+        - year
+        - eidDate
+        - withdrawalUnlockDate
+        - deliveryStartDate
+        - deliveryEndDate
+        - isActive
+        - daysUntilEid
+        - hijriDate
+
+    EidDates:
+      type: object
+      properties:
+        adha:
+          $ref: "#/components/schemas/EidCycle"
+        fitr:
+          $ref: "#/components/schemas/EidCycle"
+        currentHijriDate:
+          type: string
+      required:
+        - adha
+        - fitr
+        - currentHijriDate
+
+    SupportTicket:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        category:
+          type: string
+          enum: [deposit, delivery, wrong_info, account, other]
+        message:
+          type: string
+        photos:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+        replies:
+          type: array
+          items:
+            type: object
+            properties:
+              from:
+                type: string
+              message:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+            required:
+              - from
+              - message
+              - createdAt
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - category
+        - message
+        - photos
+        - status
+        - replies
+        - createdAt
+
+    TicketList:
+      type: object
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: "#/components/schemas/SupportTicket"
+      required:
+        - tickets
+
+    CreateTicketRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [deposit, delivery, wrong_info, account, other]
+        message:
+          type: string
+          maxLength: 1000
+        photos:
+          type: array
+          items:
+            type: string
+          maxItems: 3
+      required:
+        - category
+        - message
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        totalAdhaBalance:
+          type: number
+        totalFitrBalance:
+          type: number
+        totalPlatformBalance:
+          type: number
+        activeOrders:
+          type: integer
+        pendingDeliveries:
+          type: integer
+        todayDeposits:
+          type: number
+        todayDepositCount:
+          type: integer
+      required:
+        - totalUsers
+        - totalAdhaBalance
+        - totalFitrBalance
+        - totalPlatformBalance
+        - activeOrders
+        - pendingDeliveries
+        - todayDeposits
+        - todayDepositCount
+
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        state:
+          type: string
+        adhaBalance:
+          type: number
+        fitrBalance:
+          type: number
+        role:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - phone
+        - role
+        - isActive
+        - adhaBalance
+        - fitrBalance
+        - createdAt
+
+    AdminUserList:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUser"
+        total:
+          type: integer
+        page:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - users
+        - total
+        - page
+        - totalPages
+
+    CreateAnimalRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        category:
+          type: string
+          enum: [Ram, Goat, Cow, Chicken, Duck, Ostrich]
+        subcategory:
+          type: string
+          nullable: true
+        description:
+          type: string
+        imageUrl:
+          type: string
+        sizes:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnimalSize"
+        isAvailable:
+          type: boolean
+        stock:
+          type: string
+          enum: [available, limited, out_of_stock]
+        eidType:
+          type: string
+          enum: [adha, fitr, both]
+      required:
+        - name
+        - category
+        - description
+        - imageUrl
+        - sizes
+        - isAvailable
+        - stock
+        - eidType
+
+    UpdateOrderStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [confirmed, dispatched, delivered]
+      required:
+        - status
+
+    UpdateUserStatusInput:
+      type: object
+      properties:
+        isActive:
+          type: boolean
+      required:
+        - isActive
+
+    BroadcastNotificationInput:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 100
+        message:
+          type: string
+          maxLength: 500
+        targetAudience:
+          type: string
+          enum: [all, adha_savers, fitr_savers]
+      required:
+        - title
+        - message
+
+    BroadcastResult:
+      type: object
+      properties:
+        sent:
+          type: integer
+        failed:
+          type: integer
+        message:
+          type: string
+      required:
+        - sent
+        - failed
+        - message
+
+    EarningsPeriodPoint:
+      type: object
+      properties:
+        label:
+          type: string
+        deposits:
+          type: number
+        withdrawals:
+          type: number
+        net:
+          type: number
+      required:
+        - label
+        - deposits
+        - withdrawals
+        - net
+
+    EarningsStats:
+      type: object
+      properties:
+        totalDeposits:
+          type: number
+        totalWithdrawals:
+          type: number
+        netRevenue:
+          type: number
+        adhaDeposits:
+          type: number
+        fitrDeposits:
+          type: number
+        topStateByDeposit:
+          type: string
+        periodBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/EarningsPeriodPoint"
+      required:
+        - totalDeposits
+        - totalWithdrawals
+        - netRevenue
+        - adhaDeposits
+        - fitrDeposits
+        - topStateByDeposit
+        - periodBreakdown
+
+    UpdateTicketStatusInput:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+        reply:
+          type: string
+      required:
+        - status
+
+    UploadImageResponse:
+      type: object
+      properties:
+        url:
+          type: string
+        publicId:
+          type: string
+      required:
+        - url
+        - publicId
