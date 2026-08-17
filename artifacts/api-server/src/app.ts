@@ -1,5 +1,5 @@
 import express, { type Express } from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import rateLimit from "express-rate-limit";
@@ -11,7 +11,43 @@ const app: Express = express();
 
 app.set("trust proxy", 1);
 
-const allowedOrigins = process.env["ALLOWED_ORIGINS"]?.split(",") ?? ["*"];
+// List of allowed web origins (Admin web, preview deployments, local dev)
+const defaultAllowedOrigins = [
+  "http://localhost:5173", // Vite Admin local
+  "http://localhost:8081", // Expo Web local (if tested in browser)
+  "http://localhost:3000",
+  "http://localhost:5001",
+  "https://eidsave-monorepo.onrender.com",
+];
+
+const envAllowedOrigins = process.env["ALLOWED_ORIGINS"]
+  ? process.env["ALLOWED_ORIGINS"].split(",").map((o) => o.trim())
+  : [];
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow non-browser requests (e.g. Expo native mobile, curl, Postman, server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+      return callback(null, true);
+    }
+
+    // Optional: Allow Vercel preview domains if hosting admin on Vercel
+    if (origin.endsWith(".vercel.app")) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
 
 app.use(
   pinoHttp({
@@ -28,10 +64,7 @@ app.use(
 );
 
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use(cors({
-  origin: allowedOrigins.includes("*") ? "*" : allowedOrigins,
-  credentials: true,
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
