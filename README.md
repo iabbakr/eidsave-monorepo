@@ -4,7 +4,7 @@ A halal Eid savings & animal delivery mobile app for Muslim Nigerians. Users sav
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000/8080)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5001/8080)
 - `pnpm --filter @workspace/eidsave run dev` — run Expo app
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
