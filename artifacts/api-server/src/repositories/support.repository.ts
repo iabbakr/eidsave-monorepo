@@ -43,4 +43,23 @@ export const SupportRepository = {
     if (ticket) await cacheDel(userTicketsKey(ticket.userId));
     return ticket ?? null;
   },
+
+  async findAll(filters?: { status?: string; page?: number }): Promise<TicketRow[]> {
+    const tickets = await db.select().from(supportTicketsTable).orderBy(desc(supportTicketsTable.createdAt));
+    const filtered = filters?.status
+      ? tickets.filter((t) => t.status === filters.status)
+      : tickets;
+    const page = filters?.page ?? 1;
+    const limit = 20;
+    return filtered.slice((page - 1) * limit, page * limit);
+  },
+
+  async update(id: string, data: Partial<TicketInsert>): Promise<TicketRow | null> {
+    const [ticket] = await db.update(supportTicketsTable)
+      .set(data)
+      .where(eq(supportTicketsTable.id, id))
+      .returning();
+    if (ticket) await cacheDel(userTicketsKey(ticket.userId));
+    return ticket ?? null;
+  },
 };
