@@ -3,7 +3,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
-import { useGetAnimal, usePlaceOrder, useGetWallet } from "@workspace/api-client-react";
+import { useGetAnimal, usePlaceOrder, useGetWallet, useGetUserProfile } from "@workspace/api-client-react";
+import { useNotificationStore } from "@/store/useNotificationStore";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
 
@@ -13,7 +14,7 @@ const LOCAL_IMAGES: Record<string, ReturnType<typeof require>> = {
   Cow: require("@/assets/images/cow.png"),
 };
 
-const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG");
+const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG", { minimumFractionDigits: 2 });
 const DELIVERY_FEE = 2000;
 
 export default function AnimalDetailScreen() {
@@ -23,7 +24,9 @@ export default function AnimalDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const { data: animal, isLoading } = useGetAnimal(id!);
+  const { data: userProfile } = useGetUserProfile();
   const orderMutation = usePlaceOrder();
+  const addNotification = useNotificationStore((s) => s.addNotification);
 
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -56,7 +59,7 @@ export default function AnimalDetailScreen() {
   const balance = wallet?.balance ?? 0;
   const canAfford = balance >= totalWithDelivery;
 
-  const img = LOCAL_IMAGES[animal.category];
+  const localImg = LOCAL_IMAGES[animal.category];
 
   const handleOrder = async () => {
     if (!selectedSize) { setError("Please select a size"); return; }
@@ -64,19 +67,39 @@ export default function AnimalDetailScreen() {
     setError("");
 
     try {
-      await orderMutation.mutateAsync({
+      const userAddr = userProfile?.address;
+      const response = await orderMutation.mutateAsync({
         data: {
           animalId: animal.id,
           size: selectedSize as import("@workspace/api-client-react").PlaceOrderRequestSize,
           quantity,
           eidType: eidType as import("@workspace/api-client-react").PlaceOrderRequestEidType,
-          recipients: [{ name: "Self", phone: "", address: { state: "", city: "", street: "" } }],
+          recipients: [
+            {
+              name: userProfile?.name ?? "Primary Account Holder",
+              phone: userProfile?.phone ?? "",
+              address: {
+                state: userAddr?.state ?? "FCT-Abuja",
+                city: userAddr?.city ?? "Abuja",
+                town: userAddr?.town,
+                street: userAddr?.street ?? "Main Residential Address",
+              },
+            },
+          ],
         },
       });
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      addNotification({
+        title: "Order Placed",
+        body: `Your order for ${animal.name} (${selectedSize}) has been confirmed.`,
+        type: "order",
+        reference: response.id,
+      });
       setSuccess(true);
-    } catch {
-      setError("Order failed. Please try again.");
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Order processing failed. Try again.";
+      setError(msg);
     }
   };
 
@@ -86,15 +109,15 @@ export default function AnimalDetailScreen() {
         <View style={[styles.successIcon, { backgroundColor: colors.success + "20" }]}>
           <Feather name="check-circle" size={56} color={colors.success} />
         </View>
-        <Text style={[styles.successTitle, { color: colors.foreground }]}>Order Placed!</Text>
+        <Text style={[styles.successTitle, { color: colors.foreground }]}>Order Confirmed!</Text>
         <Text style={[styles.successSub, { color: colors.mutedForeground }]}>
-          Your {animal.name} ({selectedSize}) has been ordered.{"\n"}We'll contact you about delivery.
+          Your {animal.name} ({selectedSize}) has been scheduled for slaughter & delivery.{"\n"}Receipt dispatched to your email.
         </Text>
         <Pressable
           style={[styles.doneBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-          onPress={() => { router.replace("/orders"); }}
+          onPress={() => router.replace("/orders")}
         >
-          <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>View Orders</Text>
+          <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>View My Orders</Text>
         </Pressable>
       </View>
     );
@@ -110,8 +133,10 @@ export default function AnimalDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}>
         <View style={[styles.imageWrap, { backgroundColor: colors.muted }]}>
-          {img ? (
-            <Image source={img} style={styles.image} resizeMode="cover" />
+          {animal.imageUrl ? (
+            <Image source={{ uri: animal.imageUrl }} style={styles.image} resizeMode="cover" />
+          ) : localImg ? (
+            <Image source={localImg} style={styles.image} resizeMode="cover" />
           ) : (
             <Feather name="box" size={48} color={colors.mutedForeground} />
           )}
@@ -184,19 +209,19 @@ export default function AnimalDetailScreen() {
                 <Text style={[styles.summaryVal, { color: colors.foreground }]}>{formatNaira(totalPrice)}</Text>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Delivery fee</Text>
+                <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Halal Processing & Delivery</Text>
                 <Text style={[styles.summaryVal, { color: colors.foreground }]}>{formatNaira(DELIVERY_FEE)}</Text>
               </View>
               <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
               <View style={styles.summaryRow}>
-                <Text style={[styles.summaryLabel, { color: colors.foreground, fontWeight: "600" }]}>Total</Text>
+                <Text style={[styles.summaryLabel, { color: colors.foreground, fontWeight: "600" }]}>Total Required</Text>
                 <Text style={[styles.summaryVal, { color: colors.primary, fontWeight: "700" }]}>{formatNaira(totalWithDelivery)}</Text>
               </View>
-              {!canAfford && selectedSize && (
+              {!canAfford && (
                 <View style={[styles.warningRow, { backgroundColor: colors.destructive + "10" }]}>
                   <Feather name="alert-circle" size={14} color={colors.destructive} />
                   <Text style={[styles.warningText, { color: colors.destructive }]}>
-                    Need {formatNaira(totalWithDelivery - balance)} more in your wallet
+                    Need {formatNaira(totalWithDelivery - balance)} more in your {eidType === "adha" ? "Adha" : "Fitr"} wallet
                   </Text>
                 </View>
               )}
@@ -211,7 +236,7 @@ export default function AnimalDetailScreen() {
         <Pressable
           style={[styles.orderBtn, { backgroundColor: canAfford && selectedSize ? colors.primary : colors.muted, borderRadius: colors.radius }]}
           onPress={handleOrder}
-          disabled={orderMutation.isPending || !selectedSize}
+          disabled={orderMutation.isPending || !selectedSize || !canAfford}
         >
           {orderMutation.isPending ? (
             <ActivityIndicator color={colors.primaryForeground} />
@@ -219,7 +244,7 @@ export default function AnimalDetailScreen() {
             <>
               <Feather name="shopping-bag" size={18} color={!selectedSize || !canAfford ? colors.mutedForeground : colors.primaryForeground} />
               <Text style={[styles.orderBtnText, { color: !selectedSize || !canAfford ? colors.mutedForeground : colors.primaryForeground }]}>
-                {!selectedSize ? "Select a size to order" : canAfford ? `Order · ${formatNaira(totalWithDelivery)}` : "Insufficient balance"}
+                {!selectedSize ? "Select a size to proceed" : canAfford ? `Order · ${formatNaira(totalWithDelivery)}` : "Insufficient Balance"}
               </Text>
             </>
           )}
@@ -233,7 +258,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
   header: { position: "absolute", top: 0, left: 0, right: 0, zIndex: 10, paddingHorizontal: 20 },
-  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", elevation: 2 },
   content: { paddingBottom: 20 },
   imageWrap: { height: 280, alignItems: "center", justifyContent: "center" },
   image: { width: "100%", height: "100%" },

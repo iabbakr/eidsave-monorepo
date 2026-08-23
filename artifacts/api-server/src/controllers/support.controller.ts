@@ -1,20 +1,18 @@
-import { Response, NextFunction } from "express";
+import { Response } from "express";
+import { AuthRequest } from "../middlewares/auth.js";
 import { SupportService } from "../services/support.service.js";
-import type { AuthRequest } from "../middlewares/auth.js";
-import type { CreateTicketBody } from "../schema/support.schema.js";
+import { createError } from "../middlewares/error.js";
 
 export const SupportController = {
-  async createTicket(req: AuthRequest & { body: CreateTicketBody }, res: Response, next: NextFunction) {
-    try {
-      const result = await SupportService.createTicket(req.userId!, req.body);
-      res.status(201).json({ ...result, success: true });
-    } catch (err) { next(err); }
+  async createTicket(req: AuthRequest, res: Response): Promise<void> {
+    if (!req.userId) throw createError("Unauthorized", 401);
+    const ticket = await SupportService.createTicket(req.userId, req.body);
+    res.status(201).json(ticket);
   },
 
-  async getMyTickets(req: AuthRequest, res: Response, next: NextFunction) {
-    try {
-      const result = await SupportService.getUserTickets(req.userId!);
-      res.json(result);
-    } catch (err) { next(err); }
+  async getMyTickets(req: AuthRequest, res: Response): Promise<void> {
+    if (!req.userId) throw createError("Unauthorized", 401);
+    const tickets = await SupportService.getUserTickets(req.userId);
+    res.json(tickets);
   },
 };

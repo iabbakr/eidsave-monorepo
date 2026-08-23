@@ -21,9 +21,9 @@ export default function FitrScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: wallet, refetch } = useGetWallet("fitr");
-  const { data: groupsData } = useGetGroups();
-  const { data: eidDates } = useGetEidDates();
+  const { data: wallet, refetch: refetchWallet } = useGetWallet("fitr");
+  const { data: groupsData, refetch: refetchGroups } = useGetGroups();
+  const { data: eidDates, refetch: refetchEid } = useGetEidDates();
 
   const balance = wallet?.balance ?? 0;
   const mode = wallet?.mode ?? "group";
@@ -33,7 +33,7 @@ export default function FitrScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetchWallet(), refetchGroups(), refetchEid()]);
     setRefreshing(false);
   };
 

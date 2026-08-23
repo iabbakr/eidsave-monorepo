@@ -1,0 +1,66 @@
+import { logger } from "../lib/logger.js";
+import { createError } from "../middlewares/error.js";
+
+const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || "";
+
+export const PaystackTransferService = {
+  async createTransferRecipient(accountNumber: string, bankCode: string, name: string): Promise<string> {
+    try {
+      const res = await fetch("https://api.paystack.co/transferrecipient", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: "nuban",
+          name,
+          account_number: accountNumber,
+          bank_code: bankCode,
+          currency: "NGN",
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.status || !data.data?.recipient_code) {
+        throw new Error(data.message || "Failed to resolve bank account recipient");
+      }
+
+      return data.data.recipient_code as string;
+    } catch (err: unknown) {
+      logger.error({ err, accountNumber, bankCode }, "Paystack recipient resolution failed");
+      throw createError("Invalid banking details provided", 400);
+    }
+  },
+
+  async initiateTransfer(recipientCode: string, amountInNaira: number, reference: string): Promise<boolean> {
+    try {
+      const res = await fetch("https://api.paystack.co/transfer", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${PAYSTACK_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: "balance",
+          amount: Math.round(amountInNaira * 100),
+          recipient: recipientCode,
+          reason: "EidSave Seasonal Wallet Withdrawal",
+          reference,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.status) {
+        logger.error({ data }, "Paystack transfer execution rejected");
+        throw new Error(data.message || "Transfer failed");
+      }
+
+      logger.info({ reference, amount: amountInNaira }, "Paystack bank transfer successfully initiated");
+      return true;
+    } catch (err: unknown) {
+      logger.error({ err, reference }, "Paystack bank transfer failed");
+      throw createError("Bank transfer failed to process", 500);
+    }
+  },
+};

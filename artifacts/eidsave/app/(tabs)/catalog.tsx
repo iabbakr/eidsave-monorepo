@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { useGetAnimals } from "@workspace/api-client-react";
+import type { Animal } from "@workspace/api-client-react";
 import { useState } from "react";
 
 const CATEGORIES = ["All", "Ram", "Goat", "Cow"];
@@ -14,48 +15,17 @@ const LOCAL_IMAGES: Record<string, ReturnType<typeof require>> = {
   Cow: require("@/assets/images/cow.png"),
 };
 
-const MOCK_ANIMALS = [
-  {
-    id: "mock-ram-1", name: "Sokoto Gudali Ram", category: "Ram" as const,
-    description: "Premium Sokoto Gudali ram, well-fed and healthy.",
-    imageUrl: "", sizes: [
-      { label: "Small", weight: "15–20kg", price: 45000 },
-      { label: "Medium", weight: "20–30kg", price: 75000 },
-      { label: "Large", weight: "30–40kg", price: 120000 },
-      { label: "XL", weight: "40kg+", price: 180000 },
-    ],
-    isAvailable: true, stock: "available" as const, eidType: "adha" as const, createdAt: "",
-  },
-  {
-    id: "mock-goat-1", name: "West African Dwarf Goat", category: "Goat" as const,
-    description: "Healthy West African Dwarf goat, well-raised on natural feed.",
-    imageUrl: "", sizes: [
-      { label: "Small", weight: "15–20kg", price: 35000 },
-      { label: "Medium", weight: "20–30kg", price: 55000 },
-    ],
-    isAvailable: true, stock: "available" as const, eidType: "adha" as const, createdAt: "",
-  },
-  {
-    id: "mock-cow-1", name: "Bunaji White Cow", category: "Cow" as const,
-    description: "Premium Bunaji white cow, excellent for group Eid al-Fitr purchases.",
-    imageUrl: "", sizes: [
-      { label: "Small Share (1/7)", weight: "~40kg meat", price: 150000 },
-      { label: "Full Cow", weight: "280kg live", price: 600000 },
-    ],
-    isAvailable: true, stock: "available" as const, eidType: "fitr" as const, createdAt: "",
-  },
-];
-
 const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG");
 
 function AnimalCard({ animal, onPress, colors }: {
-  animal: typeof MOCK_ANIMALS[0];
+  animal: Animal;
   onPress: () => void;
   colors: ReturnType<typeof useColors>;
 }) {
-  const minPrice = Math.min(...animal.sizes.map(s => s.price));
-  const maxPrice = Math.max(...animal.sizes.map(s => s.price));
-  const img = LOCAL_IMAGES[animal.category];
+  const prices = animal.sizes?.map((s) => s.price) ?? [0];
+  const minPrice = prices.length ? Math.min(...prices) : 0;
+  const maxPrice = prices.length ? Math.max(...prices) : 0;
+  const localImg = LOCAL_IMAGES[animal.category];
 
   return (
     <Pressable
@@ -63,12 +33,14 @@ function AnimalCard({ animal, onPress, colors }: {
       onPress={onPress}
     >
       <View style={[styles.animalImgWrap, { backgroundColor: colors.muted }]}>
-        {img ? (
-          <Image source={img} style={styles.animalImg} resizeMode="cover" />
+        {animal.imageUrl ? (
+          <Image source={{ uri: animal.imageUrl }} style={styles.animalImg} resizeMode="cover" />
+        ) : localImg ? (
+          <Image source={localImg} style={styles.animalImg} resizeMode="cover" />
         ) : (
           <Feather name="box" size={32} color={colors.mutedForeground} />
         )}
-        {(animal.stock as string) === "limited" && (
+        {animal.stock === "limited" && (
           <View style={[styles.limitedBadge, { backgroundColor: colors.accent }]}>
             <Text style={styles.limitedText}>Limited</Text>
           </View>
@@ -78,15 +50,15 @@ function AnimalCard({ animal, onPress, colors }: {
         <Text style={[styles.animalName, { color: colors.foreground }]} numberOfLines={1}>{animal.name}</Text>
         <Text style={[styles.animalCategory, { color: colors.mutedForeground }]}>{animal.category}</Text>
         <Text style={[styles.animalPrice, { color: colors.primary }]}>
-          {formatNaira(minPrice)} – {formatNaira(maxPrice)}
+          {minPrice === maxPrice ? formatNaira(minPrice) : `${formatNaira(minPrice)} – ${formatNaira(maxPrice)}`}
         </Text>
         <View style={styles.sizePills}>
-          {animal.sizes.slice(0, 3).map((s) => (
+          {animal.sizes?.slice(0, 3).map((s) => (
             <View key={s.label} style={[styles.sizePill, { backgroundColor: colors.muted }]}>
               <Text style={[styles.sizePillText, { color: colors.mutedForeground }]}>{s.label}</Text>
             </View>
           ))}
-          {animal.sizes.length > 3 && (
+          {animal.sizes && animal.sizes.length > 3 && (
             <Text style={[styles.moreSizes, { color: colors.mutedForeground }]}>+{animal.sizes.length - 3}</Text>
           )}
         </View>
@@ -102,10 +74,11 @@ export default function CatalogScreen() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, isLoading, refetch } = useGetAnimals();
+  const { data, isLoading, refetch } = useGetAnimals(
+    selectedCategory === "All" ? undefined : { category: selectedCategory }
+  );
 
-  const animals = (data?.animals && data.animals.length > 0 ? data.animals : MOCK_ANIMALS) as typeof MOCK_ANIMALS;
-  const filtered = selectedCategory === "All" ? animals : animals.filter((a) => a.category === selectedCategory);
+  const animals = data?.animals ?? [];
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -152,7 +125,7 @@ export default function CatalogScreen() {
         </View>
       ) : (
         <FlatList
-          data={filtered}
+          data={animals}
           keyExtractor={(item) => item.id}
           numColumns={2}
           contentContainerStyle={[styles.grid, { paddingBottom: insets.bottom + 100 }]}
@@ -169,7 +142,7 @@ export default function CatalogScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Feather name="box" size={32} color={colors.mutedForeground} />
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No animals in this category</Text>
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No animals available in this category</Text>
             </View>
           }
         />
