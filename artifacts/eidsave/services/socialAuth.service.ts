@@ -15,18 +15,46 @@ import { useSocialAuthenticate, type SocialAuthResponse } from "@workspace/api-c
 
 WebBrowser.maybeCompleteAuthSession();
 
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+
+// Google's hook throws if the client ID for the current platform is
+// missing, which would otherwise crash the whole login screen whenever
+// OAuth env vars aren't configured yet (e.g. local dev without Google
+// Cloud credentials set up). Only pass real client IDs once the
+// platform-relevant one is actually present.
+const isGoogleConfigured =
+  Platform.OS === "android"
+    ? Boolean(GOOGLE_ANDROID_CLIENT_ID)
+    : Platform.OS === "ios"
+      ? Boolean(GOOGLE_IOS_CLIENT_ID)
+      : Boolean(GOOGLE_WEB_CLIENT_ID);
+
 export function useSocialAuth() {
   const [loading, setLoading] = useState<"google" | "apple" | null>(null);
   const [error, setError] = useState("");
   const socialMutation = useSocialAuthenticate();
 
-  const [, googleResponse, googlePromptAsync] = Google.useIdTokenAuthRequest({
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    clientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
+  const [, googleResponse, googlePromptAsync] = Google.useIdTokenAuthRequest(
+    isGoogleConfigured
+      ? {
+          iosClientId: GOOGLE_IOS_CLIENT_ID,
+          androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+          clientId: GOOGLE_WEB_CLIENT_ID,
+        }
+      : // Placeholder request so the hook never receives an undefined
+        // client ID for the active platform. promptAsync() is never
+        // called for this state (see signInWithGoogle below), so this
+        // config is inert.
+        { iosClientId: undefined, androidClientId: undefined, clientId: "unconfigured" },
+  );
 
   const signInWithGoogle = useCallback(async (): Promise<SocialAuthResponse | null> => {
+    if (!isGoogleConfigured) {
+      setError("Google sign-in isn't configured yet. Set EXPO_PUBLIC_GOOGLE_*_CLIENT_ID in your .env.");
+      return null;
+    }
     setError("");
     setLoading("google");
     try {
@@ -92,5 +120,13 @@ export function useSocialAuth() {
     }
   }, [socialMutation]);
 
-  return { signInWithGoogle, signInWithApple, loading, error, setError, isAppleAvailable: Platform.OS === "ios" };
+  return {
+    signInWithGoogle,
+    signInWithApple,
+    loading,
+    error,
+    setError,
+    isGoogleAvailable: isGoogleConfigured,
+    isAppleAvailable: Platform.OS === "ios",
+  };
 }
