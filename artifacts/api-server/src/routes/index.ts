@@ -10,6 +10,7 @@ import { eidRouter } from "./eid.js";
 import { supportRouter } from "./support.js";
 import { adminRouter } from "./admin.js";
 import locationRouter from "./locations.js";
+import { otpRouter } from "./otp.routes.js";
 
 const router: IRouter = Router();
 
@@ -24,6 +25,7 @@ router.use("/v1/eid", eidRouter);
 router.use("/v1/support", supportRouter);
 router.use("/v1/admin", adminRouter);
 router.use("/v1/locations", locationRouter);
+router.use("/v1/otp", otpRouter);
 
 // NOTE: /v1/webhooks/paystack is intentionally NOT mounted here.
 // It is registered directly on the app in app.ts, ahead of express.json(),
