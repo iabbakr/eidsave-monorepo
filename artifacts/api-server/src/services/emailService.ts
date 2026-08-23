@@ -36,7 +36,7 @@ export const EmailService = {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "EidSave <receipts@eidsave.ng>",
+            from: "EidSave <noreply@elitehubng.com>",
             to: payload.toEmail,
             subject: `Official Receipt: ${payload.type.toUpperCase()} of ${formatNaira(payload.amount)} [${payload.reference}]`,
             html: `

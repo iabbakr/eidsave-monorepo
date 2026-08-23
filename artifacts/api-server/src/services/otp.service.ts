@@ -46,7 +46,7 @@ async function sendOtpEmail(email: string, code: string): Promise<void> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: "EidSave <noreply@eidsave.app>",
+      from: "EidSave <noreply@elitehubng.com>",
       to: email,
       subject: "Verify your EidSave email",
       html: `
