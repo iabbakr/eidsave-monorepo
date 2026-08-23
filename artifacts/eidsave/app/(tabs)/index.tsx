@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { useAuth } from "@/hooks/useAuth";
 import { useGetWallet, useGetEidDates, useGetTransactions } from "@workspace/api-client-react";
+import { useNotificationStore } from "@/store/useNotificationStore";
 import { useState } from "react";
 
 function formatNaira(n: number) {
@@ -37,9 +38,10 @@ function EidCard({ title, subtitle, balance, daysLeft, iconName, onPress, colors
   );
 }
 
-function TransactionRow({ tx, colors }: {
-  tx: { id: string; type: string; amount: number; walletType: string; status: string; createdAt: string };
+function TransactionRow({ tx, colors, onPress }: {
+  tx: { id: string; type: string; amount: number; walletType: string; status: string; createdAt: string; reference?: string };
   colors: ReturnType<typeof useColors>;
+  onPress: () => void;
 }) {
   const isCredit = tx.type === "deposit";
   const icons: Record<string, "arrow-down-left" | "arrow-up-right" | "shopping-bag" | "truck"> = {
@@ -49,7 +51,7 @@ function TransactionRow({ tx, colors }: {
     delivery_fee: "truck",
   };
   return (
-    <View style={[styles.txRow, { borderBottomColor: colors.border }]}>
+    <Pressable style={[styles.txRow, { borderBottomColor: colors.border }]} onPress={onPress}>
       <View style={[styles.txIcon, { backgroundColor: isCredit ? colors.success + "20" : colors.accent + "20" }]}>
         <Feather name={icons[tx.type] ?? "activity"} size={16} color={isCredit ? colors.success : colors.accent} />
       </View>
@@ -65,7 +67,7 @@ function TransactionRow({ tx, colors }: {
       <Text style={[styles.txAmount, { color: isCredit ? colors.success : colors.foreground }]}>
         {isCredit ? "+" : "-"}{formatNaira(tx.amount)}
       </Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -75,12 +77,13 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
 
   const { data: adhaWallet, refetch: refetchAdha } = useGetWallet("adha");
   const { data: fitrWallet, refetch: refetchFitr } = useGetWallet("fitr");
   const { data: eidDates, refetch: refetchEid } = useGetEidDates();
-  const { data: recentAdha } = useGetTransactions("adha", { page: 1, limit: 3 });
-  const { data: recentFitr } = useGetTransactions("fitr", { page: 1, limit: 3 });
+  const { data: recentAdha, refetch: refetchAdhaTx } = useGetTransactions("adha", { page: 1, limit: 3 });
+  const { data: recentFitr, refetch: refetchFitrTx } = useGetTransactions("fitr", { page: 1, limit: 3 });
 
   const recentTxs = [
     ...(recentAdha?.transactions ?? []),
@@ -94,8 +97,23 @@ export default function HomeScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchAdha(), refetchFitr(), refetchEid()]);
+    await Promise.all([refetchAdha(), refetchFitr(), refetchEid(), refetchAdhaTx(), refetchFitrTx()]);
     setRefreshing(false);
+  };
+
+  const openReceipt = (tx: typeof recentTxs[0]) => {
+    router.push({
+      pathname: "/receipt/[id]",
+      params: {
+        id: tx.id,
+        reference: tx.reference || tx.id,
+        type: tx.type,
+        amount: tx.amount.toString(),
+        walletType: tx.walletType,
+        date: new Date(tx.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }),
+        status: tx.status,
+      },
+    });
   };
 
   return (
@@ -112,35 +130,57 @@ export default function HomeScreen() {
           <Text style={[styles.greeting, { color: colors.mutedForeground }]}>As-salamu alaykum</Text>
           <Text style={[styles.name, { color: colors.foreground }]}>{firstName}</Text>
         </View>
-        <Pressable
-          onPress={() => router.push("/settings")}
-          style={[styles.settingsBtn, { backgroundColor: colors.muted }]}
-        >
-          <Feather name="settings" size={18} color={colors.mutedForeground} />
-        </Pressable>
+        <View style={styles.topActions}>
+          <Pressable
+            onPress={() => router.push("/notifications")}
+            style={[styles.iconBtn, { backgroundColor: colors.muted }]}
+          >
+            <Feather name="bell" size={18} color={colors.foreground} />
+            {unreadCount > 0 && (
+              <View style={[styles.badge, { backgroundColor: colors.destructive }]}>
+                <Text style={styles.badgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+              </View>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/settings")}
+            style={[styles.iconBtn, { backgroundColor: colors.muted }]}
+          >
+            <Feather name="settings" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
       </View>
 
-      {eidDates?.adha?.hijriDate ? (
-        <Text style={[styles.hijri, { color: colors.mutedForeground }]}>{eidDates.adha.hijriDate}</Text>
+      {eidDates?.currentHijriDate ? (
+        <Text style={[styles.hijri, { color: colors.mutedForeground }]}>{eidDates.currentHijriDate}</Text>
       ) : null}
 
       <View style={[styles.totalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>Total Savings</Text>
+        <Text style={[styles.totalLabel, { color: colors.mutedForeground }]}>Total Savings Portfolio</Text>
         <Text style={[styles.totalBalance, { color: colors.foreground }]}>{formatNaira(totalBalance)}</Text>
-        <Pressable
-          style={[styles.depositBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-          onPress={() => router.push("/deposit")}
-        >
-          <Feather name="plus" size={18} color={colors.primaryForeground} />
-          <Text style={[styles.depositBtnText, { color: colors.primaryForeground }]}>Quick Deposit</Text>
-        </Pressable>
+        <View style={styles.actionButtonsRow}>
+          <Pressable
+            style={[styles.depositBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
+            onPress={() => router.push("/deposit")}
+          >
+            <Feather name="plus" size={18} color={colors.primaryForeground} />
+            <Text style={[styles.depositBtnText, { color: colors.primaryForeground }]}>Deposit</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.withdrawBtn, { backgroundColor: colors.muted, borderRadius: colors.radius }]}
+            onPress={() => router.push("/withdraw")}
+          >
+            <Feather name="arrow-up-right" size={18} color={colors.foreground} />
+            <Text style={[styles.withdrawBtnText, { color: colors.foreground }]}>Withdraw</Text>
+          </Pressable>
+        </View>
       </View>
 
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your Savings</Text>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Your Eid Accounts</Text>
       <View style={styles.eidCards}>
         <EidCard
           title="Eid al-Adha"
-          subtitle="Animal Sacrifice"
+          subtitle="Animal Sacrifice Savings"
           balance={adhaWallet?.balance ?? 0}
           daysLeft={eidDates?.adha?.daysUntilEid ?? 0}
           iconName="moon"
@@ -149,7 +189,7 @@ export default function HomeScreen() {
         />
         <EidCard
           title="Eid al-Fitr"
-          subtitle="Group Cow / Meat"
+          subtitle="Group Cow & Meat Savings"
           balance={fitrWallet?.balance ?? 0}
           daysLeft={eidDates?.fitr?.daysUntilEid ?? 0}
           iconName="star"
@@ -168,7 +208,7 @@ export default function HomeScreen() {
           </View>
           <View style={[styles.txCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
             {recentTxs.map((tx) => (
-              <TransactionRow key={tx.id} tx={tx} colors={colors} />
+              <TransactionRow key={tx.id} tx={tx} colors={colors} onPress={() => openReceipt(tx)} />
             ))}
           </View>
         </>
@@ -181,15 +221,21 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { paddingHorizontal: 20 },
   topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
+  topActions: { flexDirection: "row", gap: 8 },
   greeting: { fontSize: 13 },
   name: { fontSize: 24, fontWeight: "700" },
   hijri: { fontSize: 12, marginBottom: 20 },
-  settingsBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", position: "relative" },
+  badge: { position: "absolute", top: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 },
+  badgeText: { color: "#fff", fontSize: 9, fontWeight: "700" },
   totalCard: { borderRadius: 16, borderWidth: 1, padding: 20, marginBottom: 24, marginTop: 4, gap: 4 },
   totalLabel: { fontSize: 13 },
   totalBalance: { fontSize: 32, fontWeight: "700", marginBottom: 16 },
-  depositBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 48 },
+  actionButtonsRow: { flexDirection: "row", gap: 10 },
+  depositBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 48 },
   depositBtnText: { fontSize: 15, fontWeight: "600" },
+  withdrawBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 48 },
+  withdrawBtnText: { fontSize: 15, fontWeight: "600" },
   sectionTitle: { fontSize: 17, fontWeight: "600", marginBottom: 12 },
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
   seeAll: { fontSize: 14 },

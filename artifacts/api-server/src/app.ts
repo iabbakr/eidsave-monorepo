@@ -6,6 +6,8 @@ import rateLimit from "express-rate-limit";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { notFound, errorHandler } from "./middlewares/error.js";
+import { captureRawBody, attachParsedBody } from "./lib/webhookRawBody.js";
+import { WebhookController } from "./controllers/webhook.controller.js";
 
 const app: Express = express();
 
@@ -65,6 +67,26 @@ app.use(
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors(corsOptions));
+
+// ---------------------------------------------------------------------------
+// Paystack webhook — MUST be mounted before express.json() below.
+//
+// Paystack's HMAC signature is computed over the exact raw bytes it sent. If
+// express.json() parses the body first, the stream is consumed and cannot be
+// re-read here, and any attempt to re-derive the "raw" body via
+// JSON.stringify(parsedBody) will not byte-match the original payload
+// (different key order/whitespace), which silently breaks verification.
+// Registering this route directly on `app` — ahead of the global JSON
+// parser — means it fully handles and responds to the request before
+// execution would otherwise reach express.json() or the main router.
+// ---------------------------------------------------------------------------
+app.post(
+  "/api/v1/webhooks/paystack",
+  captureRawBody,
+  attachParsedBody,
+  WebhookController.paystack,
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

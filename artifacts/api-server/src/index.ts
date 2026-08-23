@@ -10,20 +10,25 @@ if (!rawPort) {
 }
 
 const port = Number(rawPort);
+
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
 connectRedis();
 
-const server = app.listen(port, () => {
-  logger.info({ port }, "Server listening");
+const server = app.listen(port, "0.0.0.0", () => {
+  logger.info(
+    { port, host: "0.0.0.0" },
+    "Server listening",
+  );
 });
 
 startJobs();
 
 const shutdown = async (signal: string) => {
   logger.info({ signal }, "Shutting down");
+
   server.close(async () => {
     await disconnectRedis();
     process.exit(0);

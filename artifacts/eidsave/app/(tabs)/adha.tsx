@@ -3,18 +3,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
-import { useGetWallet, useGetEidDates } from "@workspace/api-client-react";
+import { useGetWallet, useGetEidDates, useGetAnimals } from "@workspace/api-client-react";
 import { useState } from "react";
 
 const formatNaira = (n: number) =>
   "₦" + n.toLocaleString("en-NG", { minimumFractionDigits: 2 });
-
-const ANIMAL_TIERS = [
-  { label: "Ram (Small)", minPrice: 40000, icon: "droplet" as const },
-  { label: "Ram (Medium)", minPrice: 70000, icon: "droplet" as const },
-  { label: "Ram (Large)", minPrice: 110000, icon: "droplet" as const },
-  { label: "Cow (Share)", minPrice: 130000, icon: "droplet" as const },
-];
 
 export default function AdhaScreen() {
   const colors = useColors();
@@ -22,8 +15,9 @@ export default function AdhaScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data: wallet, refetch } = useGetWallet("adha");
-  const { data: eidDates } = useGetEidDates();
+  const { data: wallet, refetch: refetchWallet } = useGetWallet("adha");
+  const { data: eidDates, refetch: refetchEid } = useGetEidDates();
+  const { data: animalsData, refetch: refetchAnimals } = useGetAnimals({ eidType: "adha" });
 
   const balance = wallet?.balance ?? 0;
   const target = wallet?.targetAmount ?? 120000;
@@ -31,14 +25,23 @@ export default function AdhaScreen() {
   const daysLeft = eidDates?.adha?.daysUntilEid ?? 0;
   const eidDate = eidDates?.adha?.eidDate ?? "2026-06-17";
 
+  // Compute live reachable animals directly from backend catalog
+  const animalTiers = (animalsData?.animals ?? []).flatMap((animal) =>
+    (animal.sizes ?? []).map((s) => ({
+      label: `${animal.name} (${s.label})`,
+      minPrice: s.price,
+      animalId: animal.id,
+    }))
+  ).sort((a, b) => a.minPrice - b.minPrice);
+
+  const reachableTiers = animalTiers.filter((t) => balance >= t.minPrice);
+  const nextTier = animalTiers.find((t) => balance < t.minPrice);
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetchWallet(), refetchEid(), refetchAnimals()]);
     setRefreshing(false);
   };
-
-  const reachableTiers = ANIMAL_TIERS.filter((t) => balance >= t.minPrice);
-  const nextTier = ANIMAL_TIERS.find((t) => balance < t.minPrice);
 
   return (
     <ScrollView
@@ -107,7 +110,7 @@ export default function AdhaScreen() {
           <Feather name="check-circle" size={18} color={colors.success} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.affordTitle, { color: colors.success }]}>You can already buy:</Text>
-            {reachableTiers.map((t) => (
+            {reachableTiers.slice(0, 3).map((t) => (
               <Text key={t.label} style={[styles.affordItem, { color: colors.foreground }]}>
                 · {t.label} ({formatNaira(t.minPrice)}+)
               </Text>

@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator, Image } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useCreateSupportTicket } from "@workspace/api-client-react";
+import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
 
@@ -24,8 +25,28 @@ export default function SupportScreen() {
 
   const [category, setCategory] = useState("");
   const [message, setMessage] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
+
+  const pickImage = async () => {
+    if (photos.length >= 3) {
+      setError("Maximum 3 screenshots allowed");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      base64: false,
+    });
+    if (!res.canceled && res.assets[0]?.uri) {
+      setPhotos([...photos, res.assets[0].uri]);
+    }
+  };
+
+  const removeImage = (idx: number) => {
+    setPhotos(photos.filter((_, i) => i !== idx));
+  };
 
   const handleSubmit = async () => {
     setError("");
@@ -33,7 +54,13 @@ export default function SupportScreen() {
     if (message.trim().length < 10) { setError("Message must be at least 10 characters"); return; }
 
     try {
-      await mutation.mutateAsync({ data: { category: category as import("@workspace/api-client-react").CreateTicketRequestCategory, message: message.trim() } });
+      await mutation.mutateAsync({
+        data: {
+          category: category as import("@workspace/api-client-react").CreateTicketRequestCategory,
+          message: message.trim(),
+          photos: photos.length > 0 ? photos : undefined,
+        },
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSuccess(true);
     } catch {
@@ -49,7 +76,7 @@ export default function SupportScreen() {
         </View>
         <Text style={[styles.successTitle, { color: colors.foreground }]}>Ticket Submitted!</Text>
         <Text style={[styles.successSub, { color: colors.mutedForeground }]}>
-          We'll get back to you within 24 hours.{"\n"}Check your tickets in Profile.
+          We'll get back to you within 24 hours.{"\n"}Check your notifications for updates.
         </Text>
         <Pressable
           style={[styles.doneBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
@@ -101,7 +128,7 @@ export default function SupportScreen() {
       <Text style={[styles.sectionLabel, { color: colors.foreground, marginTop: 8 }]}>Describe your issue</Text>
       <TextInput
         style={[styles.textarea, { borderColor: colors.border, color: colors.foreground, backgroundColor: colors.card, borderRadius: colors.radius }]}
-        placeholder="Tell us what happened. Include order numbers or dates if relevant..."
+        placeholder="Tell us what happened. Include order numbers or transaction references..."
         placeholderTextColor={colors.mutedForeground}
         multiline
         numberOfLines={6}
@@ -111,6 +138,27 @@ export default function SupportScreen() {
         textAlignVertical="top"
       />
       <Text style={[styles.charCount, { color: colors.mutedForeground }]}>{message.length}/1000</Text>
+
+      <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Attach Screenshots (Optional)</Text>
+      <View style={styles.photoRow}>
+        {photos.map((uri, idx) => (
+          <View key={idx} style={[styles.photoPreviewWrap, { borderColor: colors.border }]}>
+            <Image source={{ uri }} style={styles.photoPreview} />
+            <Pressable onPress={() => removeImage(idx)} style={styles.removePhotoBtn}>
+              <Feather name="x" size={14} color="#fff" />
+            </Pressable>
+          </View>
+        ))}
+        {photos.length < 3 && (
+          <Pressable
+            style={[styles.addPhotoBtn, { borderColor: colors.border, backgroundColor: colors.card, borderRadius: colors.radius }]}
+            onPress={pickImage}
+          >
+            <Feather name="camera" size={20} color={colors.mutedForeground} />
+            <Text style={[styles.addPhotoText, { color: colors.mutedForeground }]}>Add Photo</Text>
+          </Pressable>
+        )}
+      </View>
 
       {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
 
@@ -142,10 +190,16 @@ const styles = StyleSheet.create({
   categories: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 24 },
   catCard: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1.5 },
   catLabel: { fontSize: 13, fontWeight: "500" },
-  textarea: { height: 140, borderWidth: 1, padding: 16, fontSize: 15, lineHeight: 22 },
+  textarea: { height: 130, borderWidth: 1, padding: 16, fontSize: 15, lineHeight: 22 },
   charCount: { fontSize: 12, alignSelf: "flex-end", marginTop: 4, marginBottom: 16 },
+  photoRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
+  photoPreviewWrap: { width: 70, height: 70, borderRadius: 10, borderWidth: 1, overflow: "hidden", position: "relative" },
+  photoPreview: { width: "100%", height: "100%" },
+  removePhotoBtn: { position: "absolute", top: 2, right: 2, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 10, width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+  addPhotoBtn: { width: 90, height: 70, borderWidth: 1, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 4 },
+  addPhotoText: { fontSize: 11, fontWeight: "500" },
   error: { fontSize: 13, marginBottom: 12 },
-  submitBtn: { height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  submitBtn: { height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, marginTop: 8 },
   submitBtnText: { fontSize: 16, fontWeight: "600" },
   successWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 },
   successIcon: { width: 100, height: 100, borderRadius: 50, alignItems: "center", justifyContent: "center" },

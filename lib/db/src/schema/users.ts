@@ -7,11 +7,12 @@ export const usersTable = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   phone: text("phone").notNull(),
-  passwordHash: text("password_hash").notNull(),
+  // nullable now — social-only accounts (Google/Apple) have no password
+  passwordHash: text("password_hash"),
   state: text("state"),
   city: text("city"),
-  town: text("town"),
-  street: text("street"),
+  area: text("area"),
+  address: text("address"),
   nextOfKinName: text("next_of_kin_name"),
   nextOfKinPhone: text("next_of_kin_phone"),
   nextOfKinRelationship: text("next_of_kin_relationship"),
@@ -22,6 +23,11 @@ export const usersTable = pgTable("users", {
   savingsStreak: integer("savings_streak").notNull().default(0),
   referralCode: text("referral_code").notNull().unique(),
   pushToken: text("push_token"),
+  // new: email verification + social auth + gated onboarding
+  emailVerified: boolean("email_verified").notNull().default(false),
+  authProvider: text("auth_provider").notNull().default("password"), // "password" | "google" | "apple"
+  providerUid: text("provider_uid"),
+  profileSetupCompleted: boolean("profile_setup_completed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

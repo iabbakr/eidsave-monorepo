@@ -3,7 +3,8 @@ import { z } from "zod";
 export const WalletTypeParam = z.enum(["adha", "fitr"]);
 
 export const DepositInitSchema = z.object({
-  amount: z.number({ invalid_type_error: "Amount must be a number" })
+  amount: z
+    .number({ invalid_type_error: "Amount must be a number" })
     .min(500, "Minimum deposit is ₦500")
     .max(500000, "Maximum deposit is ₦500,000"),
 });
@@ -13,8 +14,12 @@ export const DepositVerifySchema = z.object({
 });
 
 export const WithdrawSchema = z.object({
-  amount: z.number({ invalid_type_error: "Amount must be a number" })
+  amount: z
+    .number({ invalid_type_error: "Amount must be a number" })
     .min(100, "Minimum withdrawal is ₦100"),
+  bankCode: z.string().min(3, "Bank code is required"),
+  accountNumber: z.string().length(10, "Account number must be 10 digits"),
+  accountName: z.string().min(2, "Account name is required"),
 });
 
 export const SetTargetSchema = z.object({

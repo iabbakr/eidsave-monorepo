@@ -1,9 +1,12 @@
-import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator, Modal } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { useInitDeposit, useVerifyDeposit } from "@workspace/api-client-react";
+import { useNotificationStore } from "@/store/useNotificationStore";
+import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import * as Haptics from "expo-haptics";
 
@@ -23,6 +26,10 @@ export default function DepositScreen() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
+  const initMutation = useInitDeposit();
+  const verifyMutation = useVerifyDeposit();
+  const addNotification = useNotificationStore((s) => s.addNotification);
+
   const numAmount = parseInt(amount.replace(/\D/g, ""), 10) || 0;
 
   const handleDeposit = async () => {
@@ -30,11 +37,44 @@ export default function DepositScreen() {
     if (numAmount < 500) { setError("Minimum deposit is ₦500"); return; }
     if (numAmount > 500000) { setError("Maximum deposit is ₦500,000"); return; }
 
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1500));
-    setLoading(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setSuccess(true);
+    try {
+      setLoading(true);
+      const initRes = await initMutation.mutateAsync({
+        type: walletType,
+        data: { amount: numAmount },
+      });
+
+      if (!initRes.authorizationUrl) {
+        throw new Error("Unable to initialize Paystack gateway");
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        initRes.authorizationUrl,
+        "eidsave://payment-callback"
+      );
+
+      if (result.type === "success" || result.type === "dismiss") {
+        await verifyMutation.mutateAsync({
+          type: walletType,
+          data: { reference: initRes.reference },
+        });
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        addNotification({
+          title: "Deposit Successful",
+          body: `Added ${formatNaira(numAmount)} to your ${walletType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"} wallet.`,
+          type: "deposit",
+          reference: initRes.reference,
+        });
+        setSuccess(true);
+      }
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Transaction verification failed";
+      setError(msg);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (success) {
@@ -43,10 +83,10 @@ export default function DepositScreen() {
         <View style={[styles.successIcon, { backgroundColor: colors.success + "20" }]}>
           <Feather name="check-circle" size={56} color={colors.success} />
         </View>
-        <Text style={[styles.successTitle, { color: colors.foreground }]}>Deposit Initiated!</Text>
+        <Text style={[styles.successTitle, { color: colors.foreground }]}>Deposit Confirmed!</Text>
         <Text style={[styles.successSub, { color: colors.mutedForeground }]}>
-          {formatNaira(numAmount)} to your {walletType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"} wallet.{"\n"}
-          Your payment will be confirmed shortly.
+          {formatNaira(numAmount)} credited to your {walletType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"} wallet.{"\n"}
+          Official receipt sent to your email.
         </Text>
         <Pressable
           style={[styles.doneBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
@@ -139,7 +179,7 @@ export default function DepositScreen() {
       </View>
 
       <Pressable
-        style={[styles.depositBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: numAmount < 500 ? 0.5 : 1 }]}
+        style={[styles.depositBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: numAmount < 500 || loading ? 0.5 : 1 }]}
         onPress={handleDeposit}
         disabled={loading || numAmount < 500}
       >

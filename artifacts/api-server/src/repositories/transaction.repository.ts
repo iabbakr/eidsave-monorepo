@@ -50,4 +50,31 @@ export const TransactionRepository = {
       .returning();
     return tx ?? null;
   },
+
+  /**
+   * Shallow-merges `patch` into the existing `meta` JSONB column instead of
+   * overwriting it, so callers can add fields (e.g. a Paystack transfer_code
+   * discovered after the transaction row was created) without needing to
+   * know or preserve everything already stored there.
+   */
+  async updateMeta(reference: string, patch: Record<string, unknown>): Promise<TxRow | null> {
+    const existing = await this.findByReference(reference);
+    if (!existing) return null;
+
+    const merged = { ...((existing.meta as Record<string, unknown>) ?? {}), ...patch };
+
+    const [tx] = await db.update(transactionsTable)
+      .set({ meta: merged })
+      .where(eq(transactionsTable.reference, reference))
+      .returning();
+    return tx ?? null;
+  },
+
+  async findPendingOlderThan(minutes: number): Promise<TxRow[]> {
+    const rows = await db.select().from(transactionsTable)
+      .where(eq(transactionsTable.status, "pending"));
+
+    const cutoff = Date.now() - minutes * 60_000;
+    return rows.filter(tx => tx.createdAt.getTime() < cutoff);
+  },
 };

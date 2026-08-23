@@ -7,6 +7,7 @@ import { useColors } from "@/hooks/useColors";
 import { useLogin } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Feather } from "@expo/vector-icons";
+import { SocialAuthButtons } from "@/components/SocialAuthButtons";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -105,6 +106,8 @@ export default function LoginScreen() {
           )}
         </Pressable>
 
+        <SocialAuthButtons />
+
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
             Don't have an account?{" "}
@@ -140,7 +143,7 @@ const styles = StyleSheet.create({
   error: { fontSize: 13, textAlign: "center" },
   button: { height: 56, alignItems: "center", justifyContent: "center", marginTop: 12 },
   buttonText: { fontSize: 16, fontWeight: "600" },
-  footer: { flexDirection: "row", justifyContent: "center", marginTop: 24 },
+  footer: { flexDirection: "row", justifyContent: "center", marginTop: 8 },
   footerText: { fontSize: 14 },
   link: { fontSize: 14, fontWeight: "600" },
 });

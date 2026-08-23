@@ -31,13 +31,12 @@ export default function TransactionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: adhaData, isLoading: adhaLoading, refetch: refetchAdha } = useGetTransactions("adha", { page: 1, limit: 50 });
-  const { data: fitrData, refetch: refetchFitr } = useGetTransactions("fitr", { page: 1, limit: 50 });
+  const { data: fitrData, isLoading: fitrLoading, refetch: refetchFitr } = useGetTransactions("fitr", { page: 1, limit: 50 });
 
   const allTxs = [
     ...(adhaData?.transactions ?? []),
     ...(fitrData?.transactions ?? []),
-  ]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const filtered = filter === "all" ? allTxs : allTxs.filter((t) => t.type === filter);
 
@@ -45,6 +44,21 @@ export default function TransactionsScreen() {
     setRefreshing(true);
     await Promise.all([refetchAdha(), refetchFitr()]);
     setRefreshing(false);
+  };
+
+  const openReceipt = (item: typeof allTxs[0]) => {
+    router.push({
+      pathname: "/receipt/[id]",
+      params: {
+        id: item.id,
+        reference: item.reference,
+        type: item.type,
+        amount: item.amount.toString(),
+        walletType: item.walletType,
+        date: new Date(item.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }),
+        status: item.status,
+      },
+    });
   };
 
   return (
@@ -78,7 +92,7 @@ export default function TransactionsScreen() {
         ))}
       </View>
 
-      {adhaLoading ? (
+      {adhaLoading && fitrLoading ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={colors.primary} />
         </View>
@@ -92,7 +106,10 @@ export default function TransactionsScreen() {
           renderItem={({ item }) => {
             const isCredit = item.type === "deposit";
             return (
-              <View style={[styles.txRow, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+              <Pressable
+                style={[styles.txRow, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}
+                onPress={() => openReceipt(item)}
+              >
                 <View style={[styles.txIcon, { backgroundColor: isCredit ? colors.success + "20" : colors.accent + "20" }]}>
                   <Feather name={iconMap[item.type] ?? "activity"} size={18} color={isCredit ? colors.success : colors.accent} />
                 </View>
@@ -119,7 +136,7 @@ export default function TransactionsScreen() {
                     </Text>
                   </View>
                 </View>
-              </View>
+              </Pressable>
             );
           }}
           ListEmptyComponent={

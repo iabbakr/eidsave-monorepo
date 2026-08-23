@@ -15,7 +15,7 @@ const STATUS_CONFIG: Record<OrderStatus, { color: string; bg: string; icon: "clo
   delivered: { color: "#2D9E5A", bg: "#2D9E5A15", icon: "check-circle" },
 };
 
-const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG");
+const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG", { minimumFractionDigits: 2 });
 
 export default function OrdersScreen() {
   const colors = useColors();
@@ -30,6 +30,21 @@ export default function OrdersScreen() {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
+  };
+
+  const openReceipt = (order: typeof orders[0]) => {
+    router.push({
+      pathname: "/receipt/[id]",
+      params: {
+        id: order.id,
+        reference: `ORD-${order.id.slice(0, 8).toUpperCase()}`,
+        type: "purchase",
+        amount: (order.totalPrice + order.deliveryFee).toString(),
+        walletType: order.eidType,
+        date: new Date(order.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" }),
+        status: order.status,
+      },
+    });
   };
 
   return (
@@ -54,12 +69,15 @@ export default function OrdersScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           renderItem={({ item }) => {
-            const status = item.status as OrderStatus;
-            const conf = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
+            const status = (item.status in STATUS_CONFIG ? item.status : "pending") as OrderStatus;
+            const conf = STATUS_CONFIG[status];
             return (
-              <View style={[styles.orderCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+              <Pressable
+                style={[styles.orderCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}
+                onPress={() => openReceipt(item)}
+              >
                 <View style={styles.orderTop}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.orderName, { color: colors.foreground }]}>{item.animalName}</Text>
                     <Text style={[styles.orderMeta, { color: colors.mutedForeground }]}>
                       {item.size} · Qty {item.quantity} · {item.eidType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"}
@@ -76,21 +94,28 @@ export default function OrdersScreen() {
                 <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
                 <View style={styles.orderFooter}>
-                  <Text style={[styles.orderPrice, { color: colors.foreground }]}>
-                    {formatNaira(item.totalPrice)}
-                  </Text>
+                  <View>
+                    <Text style={[styles.orderPrice, { color: colors.foreground }]}>
+                      {formatNaira(item.totalPrice + item.deliveryFee)}
+                    </Text>
+                    <Text style={[styles.orderBreakdown, { color: colors.mutedForeground }]}>
+                      Animal: {formatNaira(item.totalPrice)} {item.deliveryFee > 0 ? `· Delivery: ${formatNaira(item.deliveryFee)}` : ""}
+                    </Text>
+                  </View>
                   <Text style={[styles.orderDate, { color: colors.mutedForeground }]}>
                     {new Date(item.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short", year: "numeric" })}
                   </Text>
                 </View>
 
                 {item.recipients && item.recipients.length > 0 && (
-                  <Text style={[styles.recipients, { color: colors.mutedForeground }]}>
-                    {item.recipients.length} recipient{item.recipients.length > 1 ? "s" : ""}
-                    {" · "}delivery fee: {formatNaira(item.deliveryFee)}
-                  </Text>
+                  <View style={[styles.recipientsWrap, { backgroundColor: colors.muted + "40", borderRadius: 8 }]}>
+                    <Feather name="map-pin" size={12} color={colors.mutedForeground} />
+                    <Text style={[styles.recipients, { color: colors.mutedForeground }]}>
+                      {item.recipients.length} delivery location{item.recipients.length > 1 ? "s" : ""}
+                    </Text>
+                  </View>
                 )}
-              </View>
+              </Pressable>
             );
           }}
           ListEmptyComponent={
@@ -98,7 +123,7 @@ export default function OrdersScreen() {
               <Feather name="package" size={36} color={colors.mutedForeground} />
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No orders yet</Text>
               <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>
-                Browse the catalog and place your first Eid order
+                Browse the animal catalog and allocate savings toward your sacrifice
               </Text>
               <Pressable
                 style={[styles.browseBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
@@ -128,9 +153,11 @@ const styles = StyleSheet.create({
   statusBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusText: { fontSize: 11, fontWeight: "600" },
   divider: { height: StyleSheet.hairlineWidth },
-  orderFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  orderFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end" },
   orderPrice: { fontSize: 16, fontWeight: "700" },
+  orderBreakdown: { fontSize: 11, marginTop: 2 },
   orderDate: { fontSize: 12 },
+  recipientsWrap: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 6 },
   recipients: { fontSize: 12 },
   empty: { alignItems: "center", paddingTop: 80, paddingHorizontal: 32, gap: 10 },
   emptyTitle: { fontSize: 18, fontWeight: "600" },

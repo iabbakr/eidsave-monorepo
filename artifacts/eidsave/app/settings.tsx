@@ -3,17 +3,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
-import { useState } from "react";
+import { useNotificationStore } from "@/store/useNotificationStore";
 
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const [depositNotifs, setDepositNotifs] = useState(true);
-  const [eidReminders, setEidReminders] = useState(true);
-  const [deliveryUpdates, setDeliveryUpdates] = useState(true);
-  const [marketingNotifs, setMarketingNotifs] = useState(false);
+  const { settings, updateSetting } = useNotificationStore();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -29,13 +26,13 @@ export default function SettingsScreen() {
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>NOTIFICATIONS</Text>
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
           {[
-            { label: "Deposit confirmations", value: depositNotifs, set: setDepositNotifs, icon: "credit-card" as const },
-            { label: "Eid reminders", value: eidReminders, set: setEidReminders, icon: "bell" as const },
-            { label: "Delivery updates", value: deliveryUpdates, set: setDeliveryUpdates, icon: "truck" as const },
-            { label: "Promotions & news", value: marketingNotifs, set: setMarketingNotifs, icon: "mail" as const },
+            { key: "depositNotifs" as const, label: "Deposit confirmations", value: settings.depositNotifs, icon: "credit-card" as const },
+            { key: "eidReminders" as const, label: "Eid reminders", value: settings.eidReminders, icon: "bell" as const },
+            { key: "deliveryUpdates" as const, label: "Delivery updates", value: settings.deliveryUpdates, icon: "truck" as const },
+            { key: "marketingNotifs" as const, label: "Promotions & news", value: settings.marketingNotifs, icon: "mail" as const },
           ].map((item, idx, arr) => (
             <View
-              key={item.label}
+              key={item.key}
               style={[styles.row, { borderBottomColor: colors.border, borderBottomWidth: idx < arr.length - 1 ? StyleSheet.hairlineWidth : 0 }]}
             >
               <View style={[styles.rowIcon, { backgroundColor: colors.muted }]}>
@@ -44,7 +41,7 @@ export default function SettingsScreen() {
               <Text style={[styles.rowLabel, { color: colors.foreground }]}>{item.label}</Text>
               <Switch
                 value={item.value}
-                onValueChange={item.set}
+                onValueChange={(val) => updateSetting(item.key, val)}
                 trackColor={{ false: colors.muted, true: colors.primary }}
                 thumbColor="#fff"
               />
