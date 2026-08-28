@@ -37,9 +37,16 @@ export default function LoginScreen() {
       await login(result.token, result.user as Parameters<typeof login>[1]);
       router.replace("/(tabs)");
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Invalid email or password. Please try again.";
+      // Full ApiError object — status, data (the server's actual JSON body),
+      // message. Check the Metro/terminal console for this to see exactly
+      // what the server rejected and why, instead of guessing.
+      console.error("Login error:", e);
+
+      // customFetch throws ApiError with the shape { status, data, message },
+      // not an axios-style { response: { data: { message } } } — read from
+      // the real shape so the actual server error surfaces on screen too.
+      const apiError = e as { status?: number; data?: { message?: string }; message?: string };
+      const msg = apiError?.data?.message ?? apiError?.message ?? "Invalid email or password. Please try again.";
       setError(msg);
     }
   };

@@ -6,8 +6,8 @@ export const UpdateProfileSchema = z.object({
   address: z.object({
     state: z.string().min(1),
     city: z.string().min(1),
-    town: z.string().optional(),
-    street: z.string().min(1),
+    area: z.string().min(1),
+    address: z.string().min(3),
   }).optional(),
   nextOfKin: z.object({
     name: z.string().min(1),

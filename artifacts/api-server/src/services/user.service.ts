@@ -17,8 +17,8 @@ export const UserService = {
     if (body.address) {
       updates["state"] = body.address.state;
       updates["city"] = body.address.city;
-      updates["town"] = body.address.town;
-      updates["street"] = body.address.street;
+      updates["area"] = body.address.area;
+      updates["address"] = body.address.address;
     }
     if (body.nextOfKin) {
       updates["nextOfKinName"] = body.nextOfKin.name;

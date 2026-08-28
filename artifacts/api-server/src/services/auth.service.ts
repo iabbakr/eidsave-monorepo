@@ -17,7 +17,7 @@ function toUserProfile(user: Awaited<ReturnType<typeof UserRepository.findById>>
     email: user.email,
     phone: user.phone,
     address: user.state
-      ? { state: user.state, city: user.city ?? "", town: user.town ?? undefined, street: user.street ?? "" }
+      ? { state: user.state, city: user.city ?? "", area: user.area ?? "", address: user.address ?? "" }
       : undefined,
     nextOfKin: user.nextOfKinName
       ? { name: user.nextOfKinName, phone: user.nextOfKinPhone ?? "", relationship: user.nextOfKinRelationship ?? "" }
@@ -37,7 +37,7 @@ function calcProfileComplete(user: NonNullable<Awaited<ReturnType<typeof UserRep
   if (user.name) score += 20;
   if (user.email) score += 20;
   if (user.phone) score += 20;
-  if (user.street) score += 20;
+  if (user.address) score += 20;
   if (user.nextOfKinName) score += 20;
   return score;
 }
@@ -63,8 +63,8 @@ export const AuthService = {
       passwordHash,
       state: body.address.state,
       city: body.address.city,
-      town: body.address.town,
-      street: body.address.street,
+      area: body.address.area,
+      address: body.address.address,
       nextOfKinName: body.nextOfKin?.name,
       nextOfKinPhone: body.nextOfKin?.phone,
       nextOfKinRelationship: body.nextOfKin?.relationship,
@@ -83,6 +83,10 @@ export const AuthService = {
   async login(body: LoginBody) {
     const user = await UserRepository.findByEmail(body.email);
     if (!user) throw createError("Invalid credentials", 401);
+
+    if (!user.passwordHash) {
+      throw createError("This account uses social sign-in. Please continue with Google or Apple.", 401);
+    }
 
     const valid = await bcrypt.compare(body.password, user.passwordHash);
     if (!valid) throw createError("Invalid credentials", 401);
