@@ -4,15 +4,9 @@ import { logger } from "../lib/logger.js";
 
 const TIMEOUT_MS = 20_000;
 
-const envNum = (v: string | undefined, d: number) => (v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d);
+const envNum = (v: string | undefined, d: number) =>
+  v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : d;
 
-/**
- * Xpress "Transfer Outward" pricing (VAT exclusive) + stamp duty charged to the sender.
- * Boundary amounts (exactly 5,000 / 50,000) are not specified in the sheet; we round UP to the higher tier,
- * which over-reserves slightly and is corrected after the transfer from Xpress's real total.
- * Stamp duty defaults to "always" (min 0) so we never UNDER-reserve; once Xpress confirms the threshold
- * (the statutory rule is usually >= 10,000) set XPRESS_STAMP_DUTY_MIN_NGN=10000.
- */
 export const FEE_SCHEDULE = {
   tiers: [
     { below: 5_000, fee: 10 },
@@ -31,11 +25,6 @@ export function quoteTransferFee(amount: number): number {
   return Math.round((base + vat + stamp) * 100) / 100;
 }
 
-/**
- * `definite` = the provider answered with a rejection, so no money moved.
- * Timeouts / network errors / 5xx are NOT definite: the transfer may or may
- * not have happened, so callers must never refund blindly on those.
- */
 export class XpressApiError extends Error {
   httpStatus: number;
   definite: boolean;
@@ -47,7 +36,10 @@ export class XpressApiError extends Error {
   }
 }
 
-export interface XpressBank { code: string; name: string }
+export interface XpressBank {
+  code: string;
+  name: string;
+}
 
 export interface XpressCustomerWallet {
   status: boolean;
@@ -84,10 +76,15 @@ export interface XpressTransfer {
 }
 
 function config() {
-  const baseUrl = (process.env["XPRESS_BASE_URL"] ?? "").replace(/\/+$/, "");
-  const secret = process.env["XPRESS_SECRET_KEY"] ?? "";
-  if (!baseUrl || !secret) throw createError("Wallet provider is not configured", 503);
-  return { baseUrl, secret };
+  let rawUrl = (process.env["XPRESS_BASE_URL"] ?? "").trim().replace(/\/+$/, "");
+  // Defensive normalization: remove duplicate trailing /wallet if present in .env
+  rawUrl = rawUrl.replace(/\/wallet$/i, "").replace(/\/+$/, "");
+
+  const secret = (process.env["XPRESS_SECRET_KEY"] ?? "").trim();
+  if (!rawUrl || !secret) {
+    throw createError("Wallet provider is not configured", 503);
+  }
+  return { baseUrl: rawUrl, secret };
 }
 
 async function call<T>(
@@ -96,15 +93,20 @@ async function call<T>(
   opts: { query?: Record<string, string | number>; body?: unknown } = {},
 ): Promise<T> {
   const { baseUrl, secret } = config();
-  const url = new URL(`${baseUrl}${path}`);
-  for (const [k, v] of Object.entries(opts.query ?? {})) url.searchParams.set(k, String(v));
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const fullUrl = `${baseUrl}${normalizedPath}`;
+  const url = new URL(fullUrl);
+
+  for (const [k, v] of Object.entries(opts.query ?? {})) {
+    url.searchParams.set(k, String(v));
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
-  let res: Response;
+  let res: globalThis.Response;
   try {
-    res = await fetch(url, {
+    res = await fetch(url.toString(), {
       method,
       headers: {
         Authorization: `Bearer ${secret}`,
@@ -115,25 +117,38 @@ async function call<T>(
       signal: controller.signal,
     });
   } catch (err) {
-    logger.error({ err, path }, "Xpress request failed before a response was received");
+    logger.error({ err, path, fullUrl: url.toString() }, "Xpress request failed before a response was received");
     throw new XpressApiError("Wallet provider unreachable", 0, false);
   } finally {
     clearTimeout(timer);
   }
 
   let data: any = null;
-  try { data = await res.json(); } catch { /* empty body */ }
+  try {
+    data = await res.json();
+  } catch {
+    /* empty body */
+  }
 
-  if (!res.ok || data?.status === false) {
-    const message = typeof data?.message === "string" ? data.message : `Wallet provider error (${res.status})`;
+  const isFailed = !res.ok || data?.status === false || data?.status === "failed";
+
+  if (isFailed) {
+    const message =
+      typeof data?.message === "string"
+        ? data.message
+        : typeof data?.error === "string"
+        ? data.error
+        : `Wallet provider error (${res.status})`;
+
     const definite = (res.status >= 400 && res.status < 500) || (res.ok && data?.status === false);
-    logger.warn({ path, httpStatus: res.status, message }, "Xpress request rejected");
+
+    logger.warn({ path, fullUrl: url.toString(), httpStatus: res.status, message, data }, "Xpress request rejected");
     throw new XpressApiError(message, res.status, definite);
   }
+
   return data as T;
 }
 
-/** Turns provider errors into safe HTTP errors. Use as `throw toHttpError(err, "fallback")`. */
 export function toHttpError(err: unknown, fallback: string): unknown {
   if (err instanceof XpressApiError) {
     if (err.httpStatus === 401 || err.httpStatus === 403) {
@@ -146,7 +161,6 @@ export function toHttpError(err: unknown, fallback: string): unknown {
 }
 
 export const XpressService = {
-  /** KYC: verifies the BVN and reserves a Providus virtual account for the customer. */
   createCustomerWallet(input: {
     bvn: string;
     firstName: string;
@@ -157,7 +171,18 @@ export const XpressService = {
     address: string;
     metadata?: Record<string, unknown>;
   }) {
-    return call<XpressCustomerWallet>("POST", "/wallet", { body: input });
+    // Normalizes phone: strip spaces and convert 080... to 23480... if required by gateway
+    const cleanPhone = input.phoneNumber.replace(/\D/g, "");
+    const formattedPhone = cleanPhone.startsWith("0") && cleanPhone.length === 11
+      ? `234${cleanPhone.slice(1)}`
+      : cleanPhone;
+
+    return call<XpressCustomerWallet>("POST", "/wallet", {
+      body: {
+        ...input,
+        phoneNumber: formattedPhone,
+      },
+    });
   },
 
   async listRecentCredits(customerId: string): Promise<XpressTx[]> {
@@ -180,19 +205,21 @@ export const XpressService = {
     const k = cacheKey("xpress", "banks");
     const cached = await cacheGet<XpressBank[]>(k);
     if (cached) return cached;
-    const res = await call<{ banks?: XpressBank[] }>("GET", "/transfer/banks");
-    const banks = [...(res.banks ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+    const res = await call<{ banks?: XpressBank[]; data?: XpressBank[] }>("GET", "/transfer/banks");
+    const bankList = res.banks ?? res.data ?? [];
+    const banks = [...bankList].sort((a, b) => a.name.localeCompare(b.name));
     await cacheSet(k, banks, 86_400);
     return banks;
   },
 
   async resolveAccount(sortCode: string, accountNumber: string) {
-    const res = await call<{ account: { accountName: string; accountNumber: string; bankCode: string } }>(
-      "GET",
-      "/transfer/account/details",
-      { query: { sortCode, accountNumber } },
-    );
-    return res.account;
+    const res = await call<{
+      account?: { accountName: string; accountNumber: string; bankCode: string };
+      data?: { accountName: string; accountNumber: string; bankCode: string };
+    }>("GET", "/transfer/account/details", {
+      query: { sortCode, accountNumber },
+    });
+    return res.account ?? res.data!;
   },
 
   transferToBank(input: {
@@ -204,7 +231,7 @@ export const XpressService = {
     customerId: string;
     metadata?: Record<string, unknown>;
   }) {
-    return call<{ status: boolean; message?: string; transfer?: XpressTransfer }>(
+    return call<{ status: boolean; message?: string; transfer?: XpressTransfer; data?: XpressTransfer }>(
       "POST",
       "/transfer/bank/customer",
       { body: input },

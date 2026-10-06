@@ -42,7 +42,9 @@ export const KycService = {
   async verify(userId: string, body: KycVerifyBody) {
     const user = await UserRepository.findById(userId);
     if (!user) throw createError("User not found", 404);
-    if (user.kycStatus === "verified") return toStatus(user);
+    if (user.kycStatus === "verified" && user.virtualAccountNumber) {
+      return toStatus(user);
+    }
 
     const dob = new Date(`${body.dateOfBirth}T00:00:00Z`);
     if (Number.isNaN(dob.getTime())) throw createError("Invalid date of birth", 400);
@@ -51,20 +53,21 @@ export const KycService = {
     const address =
       [user.address, user.area, user.city, user.state].filter(Boolean).join(", ") || "Nigeria";
 
-    // Each attempt costs the merchant wallet (BVN check + wallet reservation), so serialize per user.
     const updated = await withLock(
       `kyc:${userId}`,
       async () => {
         await UserRepository.invalidate(userId);
         const fresh = await UserRepository.findById(userId);
-        if (fresh?.kycStatus === "verified") return fresh;
+        if (fresh?.kycStatus === "verified" && fresh.virtualAccountNumber) {
+          return fresh;
+        }
 
         let created;
         try {
           created = await XpressService.createCustomerWallet({
             bvn: body.bvn,
-            firstName: body.firstName,
-            lastName: body.lastName,
+            firstName: body.firstName.trim(),
+            lastName: body.lastName.trim(),
             dateOfBirth: body.dateOfBirth,
             phoneNumber: user.phone,
             email: user.email,
@@ -75,26 +78,34 @@ export const KycService = {
           throw toHttpError(err, "Identity verification is temporarily unavailable. Please try again shortly.");
         }
 
+        const customer = (created as any).customer ?? (created as any).data?.customer;
+        const wallet = (created as any).wallet ?? (created as any).data?.wallet;
+
+        if (!wallet?.accountNumber) {
+          logger.error({ created, userId }, "Xpress succeeded but wallet payload is missing");
+          throw createError("Wallet provider did not return an account number", 502);
+        }
+
         try {
           const saved = await UserRepository.update(userId, {
             dateOfBirth: body.dateOfBirth,
             bvnLast4: body.bvn.slice(-4),
             kycStatus: "verified",
-            kycTier: created.customer.tier ?? "TIER_1",
-            kycNameMatch: created.customer.nameMatch ?? null,
-            xpressCustomerId: created.customer.id,
-            virtualAccountNumber: created.wallet.accountNumber,
-            virtualBankName: created.wallet.bankName,
-            virtualAccountName: created.wallet.accountName,
+            kycTier: customer?.tier ?? "TIER_1",
+            kycNameMatch: customer?.nameMatch ?? null,
+            xpressCustomerId: customer?.id ?? null,
+            virtualAccountNumber: wallet.accountNumber,
+            virtualBankName: wallet.bankName ?? "Providus Bank",
+            virtualAccountName: wallet.accountName ?? `${body.firstName} ${body.lastName}`,
           });
-          if (!saved) throw new Error("user row vanished");
+          if (!saved) throw new Error("User row vanished during update");
           return saved;
         } catch (err) {
           logger.error(
-            { err, userId, xpressCustomerId: created.customer.id },
-            "Xpress wallet created but saving it failed - needs manual reconciliation",
+            { err, userId, xpressCustomerId: customer?.id },
+            "Xpress wallet created but local database update failed",
           );
-          throw createError("We couldn't finish setting up your account. Please contact support.", 500);
+          throw createError("Account created with provider, but finalizing profile failed. Please contact support.", 500);
         }
       },
       60,
