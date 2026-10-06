@@ -1,83 +1,101 @@
-import { View, Text, StyleSheet, Pressable, TextInput, ActivityIndicator, Modal } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Share, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { Feather } from "@expo/vector-icons";
-import { useColors } from "@/hooks/useColors";
-import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
-import { useInitDeposit, useVerifyDeposit } from "@workspace/api-client-react";
-import { useNotificationStore } from "@/store/useNotificationStore";
-import * as WebBrowser from "expo-web-browser";
-import { useState } from "react";
 import * as Haptics from "expo-haptics";
+import { useColors } from "@/hooks/useColors";
+import { useNotificationStore } from "@/store/useNotificationStore";
+import { KycGate } from "@/components/KycGate";
+import {
+  useKycStatus,
+  useDepositAccount,
+  useSyncDeposits,
+  getErrorMessage,
+  type DepositAccount,
+} from "@/hooks/useAccountActions";
 
-const SHORTCUTS = [1000, 5000, 10000, 50000];
-const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG");
+const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG", { minimumFractionDigits: 2 });
+const POLL_MS = 10_000;
+const MAX_POLLS = 30; // ~5 minutes
 
 type WalletType = "adha" | "fitr";
+const label = (w: WalletType) => (w === "adha" ? "Eid al-Adha" : "Eid al-Fitr");
 
 export default function DepositScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ wallet?: WalletType }>();
 
-  const [walletType, setWalletType] = useState<WalletType>("adha");
-  const [amount, setAmount] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [walletType, setWalletType] = useState<WalletType>(params.wallet === "fitr" ? "fitr" : "adha");
+  const [account, setAccount] = useState<DepositAccount | null>(null);
   const [error, setError] = useState("");
+  const [polling, setPolling] = useState(false);
+  const [received, setReceived] = useState<number | null>(null);
 
-  const initMutation = useInitDeposit();
-  const verifyMutation = useVerifyDeposit();
+  const kyc = useKycStatus();
+  const accountMutation = useDepositAccount();
+  const syncMutation = useSyncDeposits();
   const addNotification = useNotificationStore((s) => s.addNotification);
 
-  const numAmount = parseInt(amount.replace(/\D/g, ""), 10) || 0;
-
-  const handleDeposit = async () => {
+  // Fetching the account also tells the server which wallet new transfers should fund.
+  useEffect(() => {
+    if (!kyc.data?.verified) return;
+    let cancelled = false;
+    setAccount(null);
     setError("");
-    if (numAmount < 500) { setError("Minimum deposit is ₦500"); return; }
-    if (numAmount > 500000) { setError("Maximum deposit is ₦500,000"); return; }
+    accountMutation
+      .mutateAsync(walletType)
+      .then((a) => { if (!cancelled) setAccount(a); })
+      .catch((e) => { if (!cancelled) setError(getErrorMessage(e)); });
+    return () => { cancelled = true; };
+  }, [kyc.data?.verified, walletType]);
 
+  const check = useCallback(async (): Promise<boolean> => {
     try {
-      setLoading(true);
-      const initRes = await initMutation.mutateAsync({
-        type: walletType,
-        data: { amount: numAmount },
-      });
-
-      if (!initRes.authorizationUrl) {
-        throw new Error("Unable to initialize Paystack gateway");
-      }
-
-      const result = await WebBrowser.openAuthSessionAsync(
-        initRes.authorizationUrl,
-        "eidsave://payment-callback"
-      );
-
-      if (result.type === "success" || result.type === "dismiss") {
-        await verifyMutation.mutateAsync({
-          type: walletType,
-          data: { reference: initRes.reference },
-        });
-
+      const res = await syncMutation.mutateAsync(walletType);
+      if (res.totalCredited > 0) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         addNotification({
-          title: "Deposit Successful",
-          body: `Added ${formatNaira(numAmount)} to your ${walletType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"} wallet.`,
+          title: "Deposit Received",
+          body: `${formatNaira(res.totalCredited)} added to your ${label(walletType)} wallet.`,
           type: "deposit",
-          reference: initRes.reference,
+          reference: res.credited[0]?.reference,
         });
-        setSuccess(true);
+        setReceived(res.totalCredited);
+        return true;
       }
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Transaction verification failed";
-      setError(msg);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setLoading(false);
+      return false;
+    } catch (e) {
+      setError(getErrorMessage(e));
+      return false;
     }
+  }, [walletType]);
+
+  useEffect(() => {
+    if (!polling) return;
+    let tries = 0;
+    const id = setInterval(async () => {
+      tries++;
+      const got = await check();
+      if (got || tries >= MAX_POLLS) setPolling(false);
+    }, POLL_MS);
+    return () => clearInterval(id);
+  }, [polling, check]);
+
+  const onCheckPressed = async () => {
+    setError("");
+    const got = await check();
+    if (!got) setPolling(true);
   };
 
-  if (success) {
+  const shareDetails = () => {
+    if (!account) return;
+    void Share.share({ message: `${account.bankName}\n${account.accountNumber}\n${account.accountName}` });
+  };
+
+  if (received !== null) {
     return (
       <View style={[styles.successWrap, { backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={[styles.successIcon, { backgroundColor: colors.success + "20" }]}>
@@ -85,13 +103,10 @@ export default function DepositScreen() {
         </View>
         <Text style={[styles.successTitle, { color: colors.foreground }]}>Deposit Confirmed!</Text>
         <Text style={[styles.successSub, { color: colors.mutedForeground }]}>
-          {formatNaira(numAmount)} credited to your {walletType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"} wallet.{"\n"}
+          {formatNaira(received)} credited to your {label(walletType)} wallet.{"\n"}
           Official receipt sent to your email.
         </Text>
-        <Pressable
-          style={[styles.doneBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
-          onPress={() => router.back()}
-        >
+        <Pressable style={[styles.doneBtn, { backgroundColor: colors.primary, borderRadius: colors.radius }]} onPress={() => router.back()}>
           <Text style={[styles.doneBtnText, { color: colors.primaryForeground }]}>Done</Text>
         </Pressable>
       </View>
@@ -99,10 +114,9 @@ export default function DepositScreen() {
   }
 
   return (
-    <KeyboardAwareScrollViewCompat
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }]}
-      bottomOffset={20}
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.background }}
+      contentContainerStyle={{ paddingHorizontal: 24, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 }}
     >
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -112,95 +126,89 @@ export default function DepositScreen() {
         <View style={{ width: 36 }} />
       </View>
 
-      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Choose wallet</Text>
-      <View style={styles.walletToggle}>
-        {(["adha", "fitr"] as WalletType[]).map((w) => (
-          <Pressable
-            key={w}
-            style={[
-              styles.walletOption,
-              {
-                backgroundColor: walletType === w ? colors.primary : colors.card,
-                borderColor: walletType === w ? colors.primary : colors.border,
-                borderRadius: colors.radius,
-              },
-            ]}
-            onPress={() => setWalletType(w)}
-          >
-            <Text style={[styles.walletOptionText, { color: walletType === w ? colors.primaryForeground : colors.foreground }]}>
-              {w === "adha" ? "Eid al-Adha" : "Eid al-Fitr"}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      {kyc.isLoading ? (
+        <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+      ) : !kyc.data?.verified ? (
+        <KycGate body="Verify your BVN once to get your own bank account number for deposits." />
+      ) : (
+        <>
+          <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Deposit into</Text>
+          <View style={styles.walletToggle}>
+            {(["adha", "fitr"] as WalletType[]).map((w) => (
+              <Pressable
+                key={w}
+                style={[
+                  styles.walletOption,
+                  {
+                    backgroundColor: walletType === w ? colors.primary : colors.card,
+                    borderColor: walletType === w ? colors.primary : colors.border,
+                    borderRadius: colors.radius,
+                  },
+                ]}
+                onPress={() => { setPolling(false); setWalletType(w); }}
+              >
+                <Text style={[styles.walletOptionText, { color: walletType === w ? colors.primaryForeground : colors.foreground }]}>
+                  {label(w)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
 
-      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Enter amount</Text>
-      <View style={[styles.amountWrap, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-        <Text style={[styles.nairaSign, { color: colors.mutedForeground }]}>₦</Text>
-        <TextInput
-          style={[styles.amountInput, { color: colors.foreground }]}
-          placeholder="0"
-          placeholderTextColor={colors.mutedForeground}
-          keyboardType="numeric"
-          value={amount}
-          onChangeText={(v) => setAmount(v.replace(/\D/g, ""))}
-          maxLength={7}
-        />
-      </View>
+          <View style={[styles.accountCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+            {account ? (
+              <>
+                <Text style={[styles.accLabel, { color: colors.mutedForeground }]}>Bank</Text>
+                <Text style={[styles.accValue, { color: colors.foreground }]}>{account.bankName}</Text>
+                <Text style={[styles.accLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Account number</Text>
+                <Text selectable style={[styles.accNumber, { color: colors.foreground }]}>{account.accountNumber}</Text>
+                <Text style={[styles.accLabel, { color: colors.mutedForeground, marginTop: 14 }]}>Account name</Text>
+                <Text selectable style={[styles.accValue, { color: colors.foreground }]}>{account.accountName}</Text>
+                <Pressable style={[styles.shareBtn, { backgroundColor: colors.muted, borderRadius: colors.radius }]} onPress={shareDetails}>
+                  <Feather name="share" size={15} color={colors.foreground} />
+                  <Text style={[styles.shareText, { color: colors.foreground }]}>Share details</Text>
+                </Pressable>
+              </>
+            ) : (
+              <ActivityIndicator color={colors.primary} />
+            )}
+          </View>
 
-      <Text style={[styles.rangeNote, { color: colors.mutedForeground }]}>Min: ₦500 · Max: ₦500,000</Text>
-
-      <View style={styles.shortcuts}>
-        {SHORTCUTS.map((s) => (
-          <Pressable
-            key={s}
-            style={[styles.shortcut, { backgroundColor: colors.muted, borderRadius: colors.radius }]}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAmount(String(s)); }}
-          >
-            <Text style={[styles.shortcutText, { color: colors.foreground }]}>{formatNaira(s)}</Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
-
-      <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-        <View style={styles.summaryRow}>
-          <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Amount</Text>
-          <Text style={[styles.summaryValue, { color: colors.foreground }]}>{numAmount > 0 ? formatNaira(numAmount) : "—"}</Text>
-        </View>
-        <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-        <View style={styles.summaryRow}>
-          <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>Wallet</Text>
-          <Text style={[styles.summaryValue, { color: colors.foreground }]}>
-            {walletType === "adha" ? "Eid al-Adha" : "Eid al-Fitr"}
+          <Text style={[styles.note, { color: colors.mutedForeground }]}>
+            Transfer any amount from your bank app to this account. It will be credited to your {label(walletType)} wallet,
+            usually within a minute. This account is yours only - don't share it as a way to pay someone else.
           </Text>
-        </View>
-      </View>
-
-      <Pressable
-        style={[styles.depositBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: numAmount < 500 || loading ? 0.5 : 1 }]}
-        onPress={handleDeposit}
-        disabled={loading || numAmount < 500}
-      >
-        {loading ? (
-          <ActivityIndicator color={colors.primaryForeground} />
-        ) : (
-          <>
-            <Feather name="credit-card" size={18} color={colors.primaryForeground} />
-            <Text style={[styles.depositBtnText, { color: colors.primaryForeground }]}>
-              Pay {numAmount > 0 ? formatNaira(numAmount) : ""} via Paystack
+          {kyc.data?.limits?.maxBalance ? (
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              Your verification level lets your account hold up to ₦{kyc.data.limits.maxBalance.toLocaleString("en-NG")} in total
+              across both wallets. Transfers that take you over this may be rejected by the bank.
             </Text>
-          </>
-        )}
-      </Pressable>
-    </KeyboardAwareScrollViewCompat>
+          ) : null}
+
+          {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+
+          <Pressable
+            style={[styles.checkBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: !account || syncMutation.isPending ? 0.6 : 1 }]}
+            onPress={onCheckPressed}
+            disabled={!account || syncMutation.isPending}
+          >
+            {syncMutation.isPending || polling ? (
+              <>
+                <ActivityIndicator color={colors.primaryForeground} />
+                <Text style={[styles.checkBtnText, { color: colors.primaryForeground }]}>
+                  {polling ? "Waiting for your transfer…" : "Checking…"}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.checkBtnText, { color: colors.primaryForeground }]}>I've made the transfer</Text>
+            )}
+          </Pressable>
+        </>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  content: { paddingHorizontal: 24 },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 28 },
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   pageTitle: { fontSize: 18, fontWeight: "700" },
@@ -208,21 +216,16 @@ const styles = StyleSheet.create({
   walletToggle: { flexDirection: "row", gap: 10, marginBottom: 24 },
   walletOption: { flex: 1, height: 48, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   walletOptionText: { fontSize: 14, fontWeight: "600" },
-  amountWrap: { flexDirection: "row", alignItems: "center", height: 72, borderWidth: 1, paddingHorizontal: 16, marginBottom: 8 },
-  nairaSign: { fontSize: 28, marginRight: 4 },
-  amountInput: { flex: 1, fontSize: 32, fontWeight: "600" },
-  rangeNote: { fontSize: 12, marginBottom: 16 },
-  shortcuts: { flexDirection: "row", gap: 8, marginBottom: 20 },
-  shortcut: { flex: 1, height: 40, alignItems: "center", justifyContent: "center" },
-  shortcutText: { fontSize: 12, fontWeight: "500" },
+  accountCard: { borderWidth: 1, padding: 20, minHeight: 190, justifyContent: "center", marginBottom: 16 },
+  accLabel: { fontSize: 12 },
+  accValue: { fontSize: 16, fontWeight: "600", marginTop: 2 },
+  accNumber: { fontSize: 30, fontWeight: "700", letterSpacing: 2, marginTop: 2 },
+  shareBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, height: 40, marginTop: 18 },
+  shareText: { fontSize: 14, fontWeight: "500" },
+  note: { fontSize: 13, lineHeight: 19, marginBottom: 16 },
   error: { fontSize: 13, marginBottom: 12 },
-  summaryCard: { borderWidth: 1, padding: 16, marginBottom: 24, gap: 0 },
-  summaryRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 10 },
-  summaryLabel: { fontSize: 14 },
-  summaryValue: { fontSize: 14, fontWeight: "600" },
-  summaryDivider: { height: StyleSheet.hairlineWidth },
-  depositBtn: { height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
-  depositBtnText: { fontSize: 16, fontWeight: "600" },
+  checkBtn: { height: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10 },
+  checkBtnText: { fontSize: 16, fontWeight: "600" },
   successWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 32, gap: 16 },
   successIcon: { width: 100, height: 100, borderRadius: 50, alignItems: "center", justifyContent: "center" },
   successTitle: { fontSize: 26, fontWeight: "700" },

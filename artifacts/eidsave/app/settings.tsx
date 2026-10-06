@@ -51,7 +51,7 @@ export default function SettingsScreen() {
 
         <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 24 }]}>SECURITY</Text>
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-          <Pressable style={[styles.row, { borderBottomWidth: 0 }]}>
+          <Pressable style={[styles.row, { borderBottomWidth: 0 }]} onPress={() => router.push("/change-pin")}>
             <View style={[styles.rowIcon, { backgroundColor: colors.muted }]}>
               <Feather name="lock" size={16} color={colors.foreground} />
             </View>
@@ -76,6 +76,17 @@ export default function SettingsScreen() {
             <Text style={[styles.rowLabel, { color: colors.foreground }]}>Privacy Policy</Text>
             <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
           </View>
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.mutedForeground, marginTop: 24 }]}>DANGER ZONE</Text>
+        <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+          <Pressable style={[styles.row, { borderBottomWidth: 0 }]} onPress={() => router.push("/delete-account")}>
+            <View style={[styles.rowIcon, { backgroundColor: colors.destructive + "15" }]}>
+              <Feather name="trash-2" size={16} color={colors.destructive} />
+            </View>
+            <Text style={[styles.rowLabel, { color: colors.destructive }]}>Delete Account</Text>
+            <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+          </Pressable>
         </View>
       </View>
     </View>

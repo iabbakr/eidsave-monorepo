@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { cacheGet, cacheSet, cacheDel, cacheKey } from "../lib/cache.js";
@@ -54,5 +54,21 @@ export const UserRepository = {
 
   async findAll(): Promise<UserRow[]> {
     return db.select().from(usersTable).orderBy(usersTable.createdAt);
+  },
+
+  async findByXpressCustomerId(id: string): Promise<UserRow | null> {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.xpressCustomerId, id)).limit(1);
+    return user ?? null;
+  },
+ 
+  async findByVirtualAccount(accountNumber: string): Promise<UserRow | null> {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.virtualAccountNumber, accountNumber)).limit(1);
+    return user ?? null;
+  },
+ 
+  async findKycVerified(limit = 500): Promise<UserRow[]> {
+    return db.select().from(usersTable)
+      .where(and(eq(usersTable.kycStatus, "verified"), eq(usersTable.isActive, true)))
+      .limit(limit);
   },
 };

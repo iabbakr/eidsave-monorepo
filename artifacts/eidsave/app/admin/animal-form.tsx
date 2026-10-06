@@ -5,6 +5,7 @@ import { Feather } from "@expo/vector-icons";
 import { useColors } from "@/hooks/useColors";
 import {
   useGetAnimal,
+  getGetAnimalQueryKey,
   useCreateAnimal,
   useUpdateAnimal,
   useUploadImage,
@@ -34,7 +35,12 @@ export default function AdminAnimalFormScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isEdit = Boolean(id);
 
-  const { data: existing, isLoading } = useGetAnimal(id!, { query: { enabled: isEdit } });
+  const { data: existing, isLoading } = useGetAnimal(id ?? "", {
+    query: {
+      queryKey: getGetAnimalQueryKey(id ?? ""),
+      enabled: isEdit && Boolean(id),
+    },
+  });
   const createMutation = useCreateAnimal();
   const updateMutation = useUpdateAnimal();
   const uploadMutation = useUploadImage();
@@ -131,7 +137,7 @@ export default function AdminAnimalFormScreen() {
       } else {
         await createMutation.mutateAsync({ data: payload });
       }
-      await queryClient.invalidateQueries({ queryKey: ["/api/v1/animals"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api"] });
       router.back();
     } catch {
       setError("Failed to save animal listing");

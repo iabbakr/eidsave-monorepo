@@ -81,8 +81,8 @@ export default function AnimalDetailScreen() {
               address: {
                 state: userAddr?.state ?? "FCT-Abuja",
                 city: userAddr?.city ?? "Abuja",
-                town: userAddr?.town,
-                street: userAddr?.street ?? "Main Residential Address",
+                area: userAddr?.area ?? "Garki",
+                address: userAddr?.address ?? "Main Residential Address",
               },
             },
           ],

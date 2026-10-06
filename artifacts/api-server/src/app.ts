@@ -6,7 +6,6 @@ import rateLimit from "express-rate-limit";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
 import { notFound, errorHandler } from "./middlewares/error.js";
-import { captureRawBody, attachParsedBody } from "./lib/webhookRawBody.js";
 import { WebhookController } from "./controllers/webhook.controller.js";
 
 const app: Express = express();
@@ -80,13 +79,8 @@ app.use(cors(corsOptions));
 // parser — means it fully handles and responds to the request before
 // execution would otherwise reach express.json() or the main router.
 // ---------------------------------------------------------------------------
-app.post(
-  "/api/v1/webhooks/paystack",
-  captureRawBody,
-  attachParsedBody,
-  WebhookController.paystack,
-);
 
+app.post("/api/v1/webhooks/xpress", express.json({ limit: "1mb" }), WebhookController.xpress);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

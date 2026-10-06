@@ -30,12 +30,16 @@ export const EidService = {
     function toCycleResponse(cycle: typeof adha) {
       const eidDate = new Date(cycle.eidDate);
       const daysUntilEid = Math.max(0, Math.ceil((eidDate.getTime() - now.getTime()) / 86400000));
+      const withdrawalCloseDate = new Date(eidDate);
+      withdrawalCloseDate.setDate(withdrawalCloseDate.getDate() + 7);
+
       return {
         id: cycle.id,
         eidType: cycle.eidType as "adha" | "fitr",
         year: cycle.year,
         eidDate: cycle.eidDate,
         withdrawalUnlockDate: cycle.withdrawalUnlockDate,
+        withdrawalCloseDate: withdrawalCloseDate.toISOString().slice(0, 10),
         deliveryStartDate: cycle.deliveryStartDate,
         deliveryEndDate: cycle.deliveryEndDate,
         isActive: cycle.isActive,

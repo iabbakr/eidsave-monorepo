@@ -13,10 +13,8 @@ export default function TabLayout() {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
 
-  // Safe device notification registration hook
   usePushNotifications();
 
-  // Dynamic bottom padding for device navigation bars and gestures
   const tabBottomPadding = Math.max(insets.bottom, 12);
   const tabHeight = 60 + tabBottomPadding;
 
@@ -74,7 +72,7 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 3. Eid al-Fitr & Group Cow Savings */}
+      {/* 3. Eid al-Fitr Savings */}
       <Tabs.Screen
         name="fitr"
         options={{
@@ -83,12 +81,11 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 4. Animal Catalog */}
+      {/* 4. Animal Catalog — Hidden for MVP */}
       <Tabs.Screen
         name="catalog"
         options={{
-          title: "Catalog",
-          tabBarIcon: ({ color, size }) => <Feather name="grid" size={size} color={color} />,
+          href: null,
         }}
       />
 

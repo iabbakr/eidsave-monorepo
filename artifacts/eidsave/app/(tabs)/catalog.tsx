@@ -156,10 +156,10 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 12 },
   pageTitle: { fontSize: 26, fontWeight: "700" },
   pageSub: { fontSize: 13, marginTop: 2 },
-  categoriesScroll: { maxHeight: 56 },
+  categoriesScroll: { flexGrow: 0 },          // was: maxHeight: 56
   categoriesRow: { flexDirection: "row", gap: 8, alignItems: "center", paddingVertical: 8 },
   catPill: { paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1 },
-  catText: { fontSize: 14, fontWeight: "500" },
+  catText: { fontSize: 14, fontWeight: "500", lineHeight: 18 },
   grid: { paddingHorizontal: 20, paddingTop: 12 },
   gridRow: { gap: 12, marginBottom: 12 },
   animalCard: { flex: 1, borderWidth: 1, overflow: "hidden" },

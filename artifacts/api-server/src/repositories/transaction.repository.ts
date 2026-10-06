@@ -1,4 +1,4 @@
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, gte } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { transactionsTable } from "@workspace/db/schema";
 
@@ -77,4 +77,19 @@ export const TransactionRepository = {
     const cutoff = Date.now() - minutes * 60_000;
     return rows.filter(tx => tx.createdAt.getTime() < cutoff);
   },
+
+    /** Sum of the user's withdrawals (pending + success, both wallets) since `since`. Used for the daily-limit pre-check. */
+  async sumWithdrawalsSince(userId: string, since: Date): Promise<number> {
+    const rows = await db.select({ amount: transactionsTable.amount, status: transactionsTable.status })
+      .from(transactionsTable)
+      .where(and(
+        eq(transactionsTable.userId, userId),
+        eq(transactionsTable.type, "withdrawal"),
+        gte(transactionsTable.createdAt, since),
+      ));
+    return rows
+      .filter((r) => r.status !== "failed")
+      .reduce((sum, r) => sum + parseFloat(r.amount as string), 0);
+  },
+ 
 };

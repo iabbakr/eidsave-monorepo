@@ -115,7 +115,7 @@ export default function AdminDashboardScreen() {
               title="Tools"
               subtitle="Cache flush and maintenance"
               icon="tool"
-              onPress={() => router.push("/admin/tools")}
+              onPress={() => router.push("/admin/tools" as any)}
             />
           </View>
 

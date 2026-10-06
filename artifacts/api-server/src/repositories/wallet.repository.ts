@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { walletsTable } from "@workspace/db/schema";
 import { cacheGet, cacheSet, cacheDel, cacheKey } from "../lib/cache.js";
@@ -51,5 +51,36 @@ export const WalletRepository = {
       .returning();
     await cacheDel(key(userId, type));
     return wallet ?? null;
+  },
+
+
+  // wallet.repository.ts - add `import { sql } from "drizzle-orm";` and this method inside WalletRepository.
+// One SQL statement = atomic in every driver (no db.transaction needed): the ledger row and the
+// balance bump either both happen or neither does, and UNIQUE(reference) makes retries a no-op.
+
+  async creditFromDeposit(p: {
+    walletId: string;
+    userId: string;
+    walletType: "adha" | "fitr";
+    amount: number;
+    reference: string;
+    meta: Record<string, unknown>;
+  }): Promise<boolean> {
+    const amount = p.amount.toFixed(2);
+    const res = await db.execute(sql`
+      WITH ins AS (
+        INSERT INTO transactions (user_id, type, amount, wallet_type, status, reference, meta)
+        VALUES (${p.userId}, 'deposit', ${amount}, ${p.walletType}, 'success', ${p.reference}, ${JSON.stringify(p.meta)}::jsonb)
+        ON CONFLICT (reference) DO NOTHING
+        RETURNING id
+      )
+      UPDATE wallets
+      SET balance = balance + ${amount}::numeric, updated_at = now()
+      WHERE id = ${p.walletId} AND EXISTS (SELECT 1 FROM ins)
+      RETURNING id
+    `);
+    await cacheDel(key(p.userId, p.walletType));
+    const rows = (res as { rows?: unknown[] }).rows ?? (res as unknown as unknown[]);
+    return Array.isArray(rows) && rows.length > 0;
   },
 };

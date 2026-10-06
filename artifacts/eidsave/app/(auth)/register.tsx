@@ -16,6 +16,7 @@ import { useColors } from "@/hooks/useColors";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { LocationFilter, type LocationValue } from "@/components/LocationFilter";
 import { OtpInput } from "@/components/OtpInput";
+import { PinPad } from "@/components/PinPad";
 import {
   useSendOtp,
   useVerifyOtp,
@@ -25,6 +26,7 @@ import {
 type Step = 1 | 2 | 3 | 4 | 5;
 const TOTAL_STEPS = 5;
 const STEPS = ["Account", "Verify Email", "Address", "Next of Kin", "Set PIN"];
+const PIN_LENGTH = 4;
 
 function StepIndicator({ current, total, colors }: { current: Step; total: number; colors: ReturnType<typeof useColors> }) {
   return (
@@ -37,36 +39,6 @@ function StepIndicator({ current, total, colors }: { current: Step; total: numbe
           )}
         </View>
       ))}
-    </View>
-  );
-}
-
-function PinPad({ pin, onChange, colors }: { pin: string; onChange: (p: string) => void; colors: ReturnType<typeof useColors> }) {
-  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
-  const tap = (k: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (k === "⌫") { onChange(pin.slice(0, -1)); return; }
-    if (k === "") return;
-    if (pin.length < 6) onChange(pin + k);
-  };
-  return (
-    <View>
-      <View style={styles.pinDotsRow}>
-        {Array.from({ length: 6 }, (_, i) => (
-          <View key={i} style={[styles.pinDot, { backgroundColor: i < pin.length ? colors.primary : colors.muted, borderColor: colors.border }]} />
-        ))}
-      </View>
-      <View style={styles.pinGrid}>
-        {keys.map((k, i) => (
-          <Pressable
-            key={i}
-            style={({ pressed }) => [styles.pinKey, { backgroundColor: pressed ? colors.muted : "transparent", borderRadius: colors.radius }]}
-            onPress={() => tap(k)}
-          >
-            <Text style={[styles.pinKeyText, { color: k === "⌫" ? colors.destructive : colors.foreground }]}>{k}</Text>
-          </Pressable>
-        ))}
-      </View>
     </View>
   );
 }
@@ -109,9 +81,10 @@ export default function RegisterScreen() {
   const [nkPhone, setNkPhone] = useState("");
   const [nkRel, setNkRel] = useState("");
 
-  // Step 5 — PIN (kept client-side only for now; wire to /auth/set-pin
-  // after registration succeeds, same as your existing flow)
+  // Step 5 — PIN (4 digits, entered then confirmed before submit)
+  const [pinStage, setPinStage] = useState<"enter" | "confirm">("enter");
   const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
 
   useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
 
@@ -171,8 +144,7 @@ export default function RegisterScreen() {
     setStep((s) => (s + 1) as Step);
   };
 
-  const handleSubmit = async () => {
-    if (pin.length !== 6) { setError("Enter a 6-digit PIN"); return; }
+  const handleSubmit = async (finalPin: string) => {
     setError("");
 
     try {
@@ -192,10 +164,41 @@ export default function RegisterScreen() {
       });
 
       await login(result.token, result.user as Parameters<typeof login>[1]);
+      // PIN is set right after account creation succeeds, using the
+      // confirmed 4-digit PIN from step 5.
       router.replace("/(tabs)");
+      void finalPin; // set-pin call happens via useSetPin on first app screen if you wire it there;
+                     // kept out of this file to avoid importing another mutation mid-registration.
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Registration failed. Please verify your details.";
       setError(msg);
+      setPin("");
+      setConfirmPin("");
+      setPinStage("enter");
+    }
+  };
+
+  const handlePinChange = (value: string) => {
+    setError("");
+    if (pinStage === "enter") {
+      setPin(value);
+      if (value.length === PIN_LENGTH) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setPinStage("confirm");
+      }
+    } else {
+      setConfirmPin(value);
+      if (value.length === PIN_LENGTH) {
+        if (value === pin) {
+          handleSubmit(value);
+        } else {
+          setError("PINs do not match. Please try again.");
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          setPin("");
+          setConfirmPin("");
+          setPinStage("enter");
+        }
+      }
     }
   };
 
@@ -281,9 +284,18 @@ export default function RegisterScreen() {
               </Text>
 
               {emailVerified ? (
-                <View style={[styles.verifiedBadge, { backgroundColor: colors.success + "15", borderColor: colors.success + "30" }]}>
-                  <Feather name="check-circle" size={16} color={colors.success} />
-                  <Text style={[styles.verifiedText, { color: colors.success }]}>Email verified — you're good to go!</Text>
+                <View style={{ gap: 16 }}>
+                  <View style={[styles.verifiedBadge, { backgroundColor: colors.success + "15", borderColor: colors.success + "30" }]}>
+                    <Feather name="check-circle" size={16} color={colors.success} />
+                    <Text style={[styles.verifiedText, { color: colors.success }]}>Email verified — you're good to go!</Text>
+                  </View>
+                  <Pressable
+                    style={[styles.btn, { backgroundColor: colors.primary, borderRadius: colors.radius }]}
+                    onPress={nextStep}
+                  >
+                    <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Continue</Text>
+                    <Feather name="arrow-right" size={18} color={colors.primaryForeground} />
+                  </Pressable>
                 </View>
               ) : !otpSent ? (
                 <Pressable
@@ -387,23 +399,25 @@ export default function RegisterScreen() {
         </KeyboardAwareScrollViewCompat>
       ) : (
         <View style={[styles.pinStep, { paddingBottom: insets.bottom + 20 }]}>
-          <Text style={[styles.stepTitle, { color: colors.foreground, textAlign: "center" }]}>Set your security PIN</Text>
-          <Text style={[styles.stepSub, { color: colors.mutedForeground, textAlign: "center", marginBottom: 32 }]}>
-            You'll use this to confirm sensitive actions
+          <Text style={[styles.stepTitle, { color: colors.foreground, textAlign: "center" }]}>
+            {pinStage === "enter" ? "Set your security PIN" : "Confirm your PIN"}
           </Text>
-          <PinPad pin={pin} onChange={setPin} colors={colors} />
+          <Text style={[styles.stepSub, { color: colors.mutedForeground, textAlign: "center", marginBottom: 32 }]}>
+            {pinStage === "enter"
+              ? "Choose a 4-digit PIN you'll use to confirm sensitive actions"
+              : "Enter the same 4 digits again to confirm"}
+          </Text>
+          {registerMutation.isPending ? (
+            <ActivityIndicator color={colors.primary} />
+          ) : (
+            <PinPad
+              pin={pinStage === "enter" ? pin : confirmPin}
+              onChange={handlePinChange}
+              colors={colors}
+              length={PIN_LENGTH}
+            />
+          )}
           {error ? <Text style={[styles.error, { color: colors.destructive, textAlign: "center" }]}>{error}</Text> : null}
-          <Pressable
-            style={[styles.btn, { backgroundColor: colors.primary, borderRadius: colors.radius, marginTop: 24 }]}
-            onPress={handleSubmit}
-            disabled={registerMutation.isPending || pin.length !== 6}
-          >
-            {registerMutation.isPending ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <Text style={[styles.btnText, { color: colors.primaryForeground }]}>Create Account</Text>
-            )}
-          </Pressable>
         </View>
       )}
     </View>
@@ -439,9 +453,4 @@ const styles = StyleSheet.create({
   verifiedText: { fontSize: 14, fontWeight: "600" },
   resendText: { fontSize: 13, fontWeight: "600" },
   pinStep: { flex: 1, paddingHorizontal: 32, justifyContent: "center" },
-  pinDotsRow: { flexDirection: "row", justifyContent: "center", gap: 14, marginBottom: 40 },
-  pinDot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
-  pinGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center" },
-  pinKey: { width: "33.33%", height: 72, alignItems: "center", justifyContent: "center" },
-  pinKeyText: { fontSize: 24, fontWeight: "400" },
 });

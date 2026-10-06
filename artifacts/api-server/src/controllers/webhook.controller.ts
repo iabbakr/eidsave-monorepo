@@ -1,72 +1,58 @@
 import { Request, Response } from "express";
 import crypto from "crypto";
-import { TransactionRepository } from "../repositories/transaction.repository.js";
-import { WalletRepository } from "../repositories/wallet.repository.js";
 import { UserRepository } from "../repositories/user.repository.js";
-import { EmailService } from "../services/emailService.js";
+import { WalletService } from "../services/wallet.service.js";
 import { logger } from "../lib/logger.js";
 
-export const WebhookController = {
-  async paystack(req: Request, res: Response): Promise<void> {
-    try {
-      const secret = process.env.PAYSTACK_SECRET_KEY || "";
-      const hash = crypto
-        .createHmac("sha512", secret)
-        .update(JSON.stringify(req.body))
-        .digest("hex");
+function safeEqual(a: string, b: string): boolean {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
-      if (hash !== req.headers["x-paystack-signature"]) {
-        res.status(400).json({ message: "Invalid signature", success: false });
+/**
+ * Xpress callback. We do NOT trust the payload for amounts or balances:
+ * it is only used to work out WHICH customer to re-sync. The credit itself is
+ * always read back from Xpress's API and written idempotently, so a forged or
+ * replayed callback can at worst trigger a harmless re-sync.
+ *
+ * Auth: a secret token in the callback URL you register with Xpress
+ *   https://<host>/api/v1/webhooks/xpress?token=<XPRESS_WEBHOOK_TOKEN>
+ */
+export const WebhookController = {
+  async xpress(req: Request, res: Response): Promise<void> {
+    const expected = process.env["XPRESS_WEBHOOK_TOKEN"] ?? "";
+    const provided = typeof req.query["token"] === "string" ? (req.query["token"] as string) : "";
+    if (!expected || !safeEqual(provided, expected)) {
+      res.status(401).json({ message: "Unauthorized", success: false });
+      return;
+    }
+
+    try {
+      const b: any = req.body ?? {};
+      const d: any = b.data ?? {};
+      const customerId = b.customerId ?? b.customer_id ?? d.customerId ?? d.customer_id ?? b.customer?.id ?? d.customer?.id;
+      const accountNumber = b.accountNumber ?? b.account_number ?? d.accountNumber ?? d.account_number;
+
+      const user =
+        (customerId && (await UserRepository.findByXpressCustomerId(String(customerId)))) ||
+        (accountNumber && (await UserRepository.findByVirtualAccount(String(accountNumber)))) ||
+        null;
+
+      if (!user) {
+        // Shape unknown / not ours: the reconcile job will still pick the credit up.
+        logger.warn(
+          process.env["NODE_ENV"] === "production" ? { keys: Object.keys(b) } : { body: b },
+          "Xpress webhook received but no matching user found",
+        );
+        res.status(200).json({ message: "Received", success: true });
         return;
       }
 
-      const event = req.body;
-      if (event.event === "charge.success") {
-        const { reference, amount, customer } = event.data;
-        const nairaAmount = amount / 100;
-
-        const tx = await TransactionRepository.findByReference(reference);
-        if (tx && tx.status !== "success") {
-          await TransactionRepository.updateStatus(reference, "success");
-
-          const wallet = await WalletRepository.findByUserAndType(
-            tx.userId,
-            tx.walletType as "adha" | "fitr"
-          );
-
-          if (wallet) {
-            const currentBal = parseFloat(wallet.balance as string);
-            const newBal = (currentBal + nairaAmount).toFixed(2);
-            await WalletRepository.updateBalance(
-              wallet.id,
-              newBal,
-              tx.userId,
-              tx.walletType
-            );
-          }
-
-          const user = await UserRepository.findById(tx.userId);
-          if (user) {
-            await EmailService.sendReceipt({
-              toEmail: user.email,
-              customerName: user.name,
-              type: "deposit",
-              amount: nairaAmount,
-              walletType: tx.walletType as "adha" | "fitr",
-              reference,
-              date: new Date().toLocaleDateString("en-NG", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              }),
-            });
-          }
-        }
-      }
-
+      await WalletService.syncDeposits(user.id);
       res.status(200).json({ message: "Webhook processed successfully", success: true });
     } catch (err) {
-      logger.error({ err }, "Paystack webhook processing failed");
+      logger.error({ err }, "Xpress webhook processing failed");
       res.status(500).json({ message: "Internal server error", success: false });
     }
   },

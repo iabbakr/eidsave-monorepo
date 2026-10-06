@@ -6,19 +6,16 @@ import { useColors } from "@/hooks/useColors";
 import { useGetTransactions } from "@workspace/api-client-react";
 import { useState } from "react";
 
-type Filter = "all" | "deposit" | "withdrawal" | "purchase";
+type Filter = "all" | "deposit" | "withdrawal";
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "deposit", label: "Deposits" },
   { id: "withdrawal", label: "Withdrawals" },
-  { id: "purchase", label: "Purchases" },
 ];
 
-const iconMap: Record<string, "arrow-down-left" | "arrow-up-right" | "shopping-bag" | "truck"> = {
+const iconMap: Record<string, "arrow-down-left" | "arrow-up-right"> = {
   deposit: "arrow-down-left",
   withdrawal: "arrow-up-right",
-  purchase: "shopping-bag",
-  delivery_fee: "truck",
 };
 
 const formatNaira = (n: number) => "₦" + n.toLocaleString("en-NG", { minimumFractionDigits: 2 });
@@ -111,7 +108,7 @@ export default function TransactionsScreen() {
                 onPress={() => openReceipt(item)}
               >
                 <View style={[styles.txIcon, { backgroundColor: isCredit ? colors.success + "20" : colors.accent + "20" }]}>
-                  <Feather name={iconMap[item.type] ?? "activity"} size={18} color={isCredit ? colors.success : colors.accent} />
+                  <Feather name={iconMap[item.type] ?? "arrow-up-right"} size={18} color={isCredit ? colors.success : colors.accent} />
                 </View>
                 <View style={styles.txInfo}>
                   <Text style={[styles.txType, { color: colors.foreground }]}>

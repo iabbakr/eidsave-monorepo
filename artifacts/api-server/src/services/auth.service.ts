@@ -3,7 +3,13 @@ import { UserRepository } from "../repositories/user.repository.js";
 import { WalletRepository } from "../repositories/wallet.repository.js";
 import { signToken } from "../middlewares/auth.js";
 import { createError } from "../middlewares/error.js";
-import type { RegisterBody, LoginBody, SetPinBody, VerifyPinBody } from "../schema/auth.schema.js";
+import type {
+  RegisterBody,
+  LoginBody,
+  SetPinBody,
+  VerifyPinBody,
+  ChangePinBody,
+} from "../schema/auth.schema.js";
 
 function generateReferralCode(): string {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -16,6 +22,7 @@ function toUserProfile(user: Awaited<ReturnType<typeof UserRepository.findById>>
     name: user.name,
     email: user.email,
     phone: user.phone,
+    avatarUrl: user.avatarUrl ?? null,
     address: user.state
       ? { state: user.state, city: user.city ?? "", area: user.area ?? "", address: user.address ?? "" }
       : undefined,
@@ -111,5 +118,17 @@ export const AuthService = {
     if (!valid) throw createError("Incorrect PIN", 401);
 
     return { message: "PIN verified" };
+  },
+
+  async changePin(userId: string, body: ChangePinBody) {
+    const user = await UserRepository.findById(userId);
+    if (!user?.pinHash) throw createError("PIN not set — use set-pin instead", 400);
+
+    const valid = await bcrypt.compare(body.currentPin, user.pinHash);
+    if (!valid) throw createError("Current PIN is incorrect", 401);
+
+    const pinHash = await bcrypt.hash(body.newPin, 10);
+    await UserRepository.update(userId, { pinHash });
+    return { message: "PIN changed successfully" };
   },
 };

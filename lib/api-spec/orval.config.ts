@@ -74,5 +74,21 @@ export default defineConfig({
         useBigInt: true,
       },
     },
+    hooks: {
+      afterAllFilesWrite: (files) => {
+        const fileList = Array.isArray(files) ? files : [files];
+        for (const file of fileList) {
+          if (typeof file === "string" && file.endsWith(".ts")) {
+            if (fs.existsSync(file)) {
+              let content = fs.readFileSync(file, "utf8");
+              if (content.includes("zod.int()")) {
+                content = content.replace(/zod\.int\(\)/g, "zod.number().int()");
+                fs.writeFileSync(file, content, "utf8");
+              }
+            }
+          }
+        }
+      },
+    },
   },
 });

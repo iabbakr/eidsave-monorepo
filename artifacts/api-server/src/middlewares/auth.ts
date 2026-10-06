@@ -34,6 +34,22 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
   next();
 }
 
+/**
+ * Variadic role gate — e.g. requireRole("admin", "support") lets either
+ * role through. Used to give the `support` role visibility into stats,
+ * orders, and tickets without granting it user management, animal catalog,
+ * broadcast, earnings, or cache-flush access (admin-only).
+ */
+export function requireRole(...roles: string[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!req.userRole || !roles.includes(req.userRole)) {
+      res.status(403).json({ message: "Insufficient permissions", success: false });
+      return;
+    }
+    next();
+  };
+}
+
 export function signToken(userId: string, role: string): string {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "30d" });
 }

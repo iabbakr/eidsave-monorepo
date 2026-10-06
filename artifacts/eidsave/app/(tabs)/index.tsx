@@ -44,11 +44,9 @@ function TransactionRow({ tx, colors, onPress }: {
   onPress: () => void;
 }) {
   const isCredit = tx.type === "deposit";
-  const icons: Record<string, "arrow-down-left" | "arrow-up-right" | "shopping-bag" | "truck"> = {
+  const icons: Record<string, "arrow-down-left" | "arrow-up-right"> = {
     deposit: "arrow-down-left",
     withdrawal: "arrow-up-right",
-    purchase: "shopping-bag",
-    delivery_fee: "truck",
   };
   return (
     <Pressable style={[styles.txRow, { borderBottomColor: colors.border }]} onPress={onPress}>
@@ -85,12 +83,13 @@ export default function HomeScreen() {
   const { data: recentAdha, refetch: refetchAdhaTx } = useGetTransactions("adha", { page: 1, limit: 3 });
   const { data: recentFitr, refetch: refetchFitrTx } = useGetTransactions("fitr", { page: 1, limit: 3 });
 
+  // Sliced to strictly show only the last 2 transactions
   const recentTxs = [
     ...(recentAdha?.transactions ?? []),
     ...(recentFitr?.transactions ?? []),
   ]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5);
+    .slice(0, 2);
 
   const totalBalance = (adhaWallet?.balance ?? 0) + (fitrWallet?.balance ?? 0);
   const firstName = user?.name?.split(" ")[0] ?? "Friend";
@@ -180,7 +179,7 @@ export default function HomeScreen() {
       <View style={styles.eidCards}>
         <EidCard
           title="Eid al-Adha"
-          subtitle="Animal Sacrifice Savings"
+          subtitle="Save & Withdraw for Adha"
           balance={adhaWallet?.balance ?? 0}
           daysLeft={eidDates?.adha?.daysUntilEid ?? 0}
           iconName="moon"
@@ -189,7 +188,7 @@ export default function HomeScreen() {
         />
         <EidCard
           title="Eid al-Fitr"
-          subtitle="Group Cow & Meat Savings"
+          subtitle="Save & Withdraw for Fitr"
           balance={fitrWallet?.balance ?? 0}
           daysLeft={eidDates?.fitr?.daysUntilEid ?? 0}
           iconName="star"

@@ -11,6 +11,8 @@ import { supportRouter } from "./support.js";
 import { adminRouter } from "./admin.js";
 import locationRouter from "./locations.js";
 import { otpRouter } from "./otp.routes.js";
+import { kycRouter } from "./kyc.js";
+
 
 const router: IRouter = Router();
 
@@ -26,7 +28,7 @@ router.use("/v1/support", supportRouter);
 router.use("/v1/admin", adminRouter);
 router.use("/v1/locations", locationRouter);
 router.use("/v1/otp", otpRouter);
-
+router.use("/v1/kyc", kycRouter);
 // NOTE: /v1/webhooks/paystack is intentionally NOT mounted here.
 // It is registered directly on the app in app.ts, ahead of express.json(),
 // because Paystack's webhook signature must be verified against the raw
