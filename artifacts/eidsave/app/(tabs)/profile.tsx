@@ -9,7 +9,7 @@ import { useUploadAvatar } from "@/hooks/useAccountActions";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 
-type FeatherIconName = "list" | "message-circle" | "settings" | "log-out" | "chevron-right" | "award" | "copy" | "credit-card" | "trash-2";
+type FeatherIconName = "user" | "list" | "message-circle" | "settings" | "log-out" | "chevron-right" | "award" | "copy" | "credit-card";
 
 function ProfileRow({ label, icon, onPress, danger, colors }: {
   label: string;
@@ -29,23 +29,6 @@ function ProfileRow({ label, icon, onPress, danger, colors }: {
   );
 }
 
-function InfoRow({ icon, label, value, colors }: {
-  icon: React.ComponentProps<typeof Feather>["name"];
-  label: string;
-  value: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  return (
-    <View style={styles.infoRow}>
-      <Feather name={icon} size={15} color={colors.mutedForeground} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>{label}</Text>
-        <Text style={[styles.infoValue, { color: colors.foreground }]}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -55,8 +38,6 @@ export default function ProfileScreen() {
   const uploadAvatarMutation = useUploadAvatar();
 
   const initial = userProfile?.name?.charAt(0)?.toUpperCase() ?? "U";
-  const profileComplete = userProfile?.profileComplete ?? 70;
-  const nextOfKin = userProfile?.nextOfKin;
   const avatarUrl = (userProfile as { avatarUrl?: string | null } | undefined)?.avatarUrl;
 
   const handleShareReferral = async () => {
@@ -110,6 +91,7 @@ export default function ProfileScreen() {
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 }]}
       showsVerticalScrollIndicator={false}
     >
+      {/* ── 1. Identity ─────────────────────────────────────────────── */}
       <Pressable onPress={handleChangeAvatar} style={[styles.avatarWrap, { backgroundColor: colors.primary }]}>
         {avatarUrl ? (
           <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
@@ -128,6 +110,7 @@ export default function ProfileScreen() {
       <Text style={[styles.name, { color: colors.foreground }]}>{userProfile?.name ?? "—"}</Text>
       <Text style={[styles.email, { color: colors.mutedForeground }]}>{userProfile?.email ?? "—"}</Text>
 
+      {/* ── 2. Streak ──────────────────────────────────────────────── */}
       {userProfile?.savingsStreak != null && userProfile.savingsStreak > 0 && (
         <View style={[styles.streakBadge, { backgroundColor: colors.accent + "15", borderColor: colors.accent + "30" }]}>
           <Feather name="award" size={14} color={colors.accent} />
@@ -137,24 +120,19 @@ export default function ProfileScreen() {
         </View>
       )}
 
+      {/* ── 3. Quick Actions & Menu ─────────────────────────────────── */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+        <ProfileRow label="Account Information" icon="user" onPress={() => router.push("/account-info")} colors={colors} />
         <ProfileRow label="Transaction History" icon="list" onPress={() => router.push("/transactions")} colors={colors} />
         <ProfileRow label="Withdrawal Options" icon="credit-card" onPress={() => router.push("/withdraw")} colors={colors} />
         <ProfileRow label="Support & Inquiries" icon="message-circle" onPress={() => router.push("/support")} colors={colors} />
         <ProfileRow label="Settings" icon="settings" onPress={() => router.push("/settings")} colors={colors} />
       </View>
 
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-        <View style={styles.completenessRow}>
-          <Text style={[styles.completenessLabel, { color: colors.foreground }]}>Profile completeness</Text>
-          <Text style={[styles.completenessVal, { color: colors.primary }]}>{profileComplete}%</Text>
-        </View>
-        <View style={[styles.completeTrack, { backgroundColor: colors.muted }]}>
-          <View style={[styles.completeBar, { width: `${profileComplete}%`, backgroundColor: colors.primary }]} />
-        </View>
-
-        {userProfile?.referralCode && (
-          <View style={[styles.referralRow, { borderTopColor: colors.border }]}>
+      {/* ── 4. Referral Code ────────────────────────────────────────── */}
+      {userProfile?.referralCode && (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
+          <View style={styles.referralRow}>
             <View>
               <Text style={[styles.referralLabel, { color: colors.mutedForeground }]}>Your Referral Code</Text>
               <Text style={[styles.referralCode, { color: colors.foreground }]}>{userProfile.referralCode}</Text>
@@ -163,41 +141,11 @@ export default function ProfileScreen() {
               <Feather name="copy" size={15} color={colors.foreground} />
             </Pressable>
           </View>
-        )}
-      </View>
-
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-        <View style={styles.cardHeaderRow}>
-          <Text style={[styles.cardHeaderTitle, { color: colors.foreground }]}>Account Information</Text>
-          <Pressable onPress={() => router.push("/edit-profile")}>
-            <Feather name="edit-2" size={15} color={colors.primary} />
-          </Pressable>
         </View>
-        <InfoRow icon="phone" label="Phone" value={userProfile?.phone || "Not set"} colors={colors} />
-      </View>
+      )}
 
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-        <View style={styles.cardHeaderRow}>
-          <Text style={[styles.cardHeaderTitle, { color: colors.foreground }]}>Next of Kin</Text>
-          <Pressable onPress={() => router.push("/edit-profile")}>
-            <Feather name="edit-2" size={15} color={colors.primary} />
-          </Pressable>
-        </View>
-        {nextOfKin ? (
-          <>
-            <InfoRow icon="user" label="Name" value={nextOfKin.name} colors={colors} />
-            <InfoRow icon="phone" label="Phone" value={nextOfKin.phone} colors={colors} />
-            <InfoRow icon="heart" label="Relationship" value={nextOfKin.relationship} colors={colors} />
-          </>
-        ) : (
-          <Text style={[styles.emptyNokText, { color: colors.mutedForeground }]}>
-            No next of kin on file yet. Add one from Edit Profile.
-          </Text>
-        )}
-      </View>
-
+      {/* ── 5. Sign Out ────────────────────────────────────────────── */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
-        <ProfileRow label="Delete Account" icon="trash-2" onPress={() => router.push("/delete-account")} danger colors={colors} />
         <ProfileRow label="Sign Out" icon="log-out" onPress={handleLogout} danger colors={colors} />
       </View>
 
@@ -218,18 +166,7 @@ const styles = StyleSheet.create({
   streakBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
   streakText: { fontSize: 13, fontWeight: "600" },
   card: { width: "100%", borderWidth: 1, padding: 16, marginBottom: 16, gap: 12 },
-  cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  cardHeaderTitle: { fontSize: 14, fontWeight: "700" },
-  infoRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-  infoLabel: { fontSize: 11 },
-  infoValue: { fontSize: 14, marginTop: 2 },
-  emptyNokText: { fontSize: 13, lineHeight: 18 },
-  completenessRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  completenessLabel: { fontSize: 14, fontWeight: "500" },
-  completenessVal: { fontSize: 14, fontWeight: "700" },
-  completeTrack: { height: 6, borderRadius: 3, overflow: "hidden" },
-  completeBar: { height: 6, borderRadius: 3 },
-  referralRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 12 },
+  referralRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   referralLabel: { fontSize: 11 },
   referralCode: { fontSize: 18, fontWeight: "700", letterSpacing: 2, marginTop: 2 },
   copyBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },

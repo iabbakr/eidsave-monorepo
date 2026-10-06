@@ -6,7 +6,7 @@ import { useColors } from "@/hooks/useColors";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { BankPicker } from "@/components/BankPicker";
 import { KycGate } from "@/components/KycGate";
-import { useGetWallet, useWithdrawFunds } from "@workspace/api-client-react";
+import { useGetWallet, useWithdrawFunds, useGetEidDates } from "@workspace/api-client-react";
 import { useNotificationStore } from "@/store/useNotificationStore";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -45,14 +45,24 @@ export default function WithdrawScreen() {
   const kyc = useKycStatus();
   const { data: bankData } = useBanks();
   const { data: wallet } = useGetWallet(walletType);
+  const { data: eidDates } = useGetEidDates();
   const withdrawMutation = useWithdrawFunds();
   const addNotification = useNotificationStore((s) => s.addNotification);
+
+  // Compute withdrawal window status based on EidCycle schema
+  const cycle = eidDates?.[walletType];
+  const opensAt = cycle?.withdrawalUnlockDate ?? "";
+  const closesAt = cycle?.withdrawalCloseDate ?? "";
+  
+  const now = new Date();
+  const openTime = opensAt ? new Date(opensAt).getTime() : 0;
+  const closeTime = closesAt ? new Date(closesAt).getTime() : Infinity;
+  const isWithdrawalOpen = opensAt ? (now.getTime() >= openTime && now.getTime() <= closeTime) : true;
 
   const numAmount = parseInt(amount.replace(/\D/g, ""), 10) || 0;
   const fee = bankData && numAmount > 0 ? quoteFee(numAmount, bankData.feeSchedule) : 0;
   const balance = wallet?.balance ?? 0;
 
-  // Look up the account holder's name from the bank - never rely on what the user types.
   useEffect(() => {
     setResolvedName("");
     if (!bank || accountNumber.length !== 10) return;
@@ -68,6 +78,10 @@ export default function WithdrawScreen() {
 
   const handleWithdraw = async () => {
     setError("");
+    if (!isWithdrawalOpen) {
+      setError(`Withdrawal window is closed. It opens ${opensAt}.`);
+      return;
+    }
     if (numAmount < 1000) { setError("Minimum withdrawal is ₦1,000"); return; }
     if (numAmount + fee > balance) { setError(`Amount plus the ${formatNaira(fee)} transfer fee exceeds your balance`); return; }
     if (!bank) { setError("Select your bank"); return; }
@@ -169,6 +183,28 @@ export default function WithdrawScreen() {
             ))}
           </View>
 
+          {!isWithdrawalOpen ? (
+            <View style={[styles.lockedCard, { backgroundColor: colors.accent + "15", borderColor: colors.accent + "40" }]}>
+              <Feather name="lock" size={20} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.lockedTitle, { color: colors.foreground }]}>Withdrawals Locked</Text>
+                <Text style={[styles.lockedSub, { color: colors.mutedForeground }]}>
+                  Opens 1 month before Eid ({opensAt || "upcoming"}) and closes 1 week after Eid ({closesAt || "end"}).
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={[styles.lockedCard, { backgroundColor: colors.success + "15", borderColor: colors.success + "40" }]}>
+              <Feather name="unlock" size={20} color={colors.success} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.lockedTitle, { color: colors.success }]}>Withdrawals Active</Text>
+                <Text style={[styles.lockedSub, { color: colors.mutedForeground }]}>
+                  Window closes 1 week after Eid on {closesAt}.
+                </Text>
+              </View>
+            </View>
+          )}
+
           <Text style={[styles.sectionLabel, { color: colors.foreground }]}>Withdrawal Amount</Text>
           <View style={[styles.amountWrap, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: colors.radius }]}>
             <Text style={[styles.nairaSign, { color: colors.mutedForeground }]}>₦</Text>
@@ -177,6 +213,7 @@ export default function WithdrawScreen() {
               placeholder="0"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="numeric"
+              editable={isWithdrawalOpen}
               value={amount}
               onChangeText={(v) => setAmount(v.replace(/\D/g, ""))}
             />
@@ -186,14 +223,13 @@ export default function WithdrawScreen() {
               Transfer fee: {formatNaira(fee)} (deducted from your wallet)
             </Text>
           ) : null}
-          {kyc.data?.limits ? (
-            <Text style={[styles.feeNote, { color: colors.mutedForeground }]}>
-              Daily limit: {formatNaira(kyc.data.limits.dailyLimit)}
-            </Text>
-          ) : null}
 
           <Text style={[styles.sectionLabel, { color: colors.foreground, marginTop: 16 }]}>Bank</Text>
-          <Pressable style={[...field, styles.bankRow]} onPress={() => setPickerOpen(true)} disabled={!bankData}>
+          <Pressable
+            style={[...field, styles.bankRow]}
+            onPress={() => isWithdrawalOpen && setPickerOpen(true)}
+            disabled={!bankData || !isWithdrawalOpen}
+          >
             <Text style={{ color: bank ? colors.foreground : colors.mutedForeground, fontSize: 15, flex: 1 }}>
               {bank?.name ?? (bankData ? "Select bank" : "Loading banks…")}
             </Text>
@@ -207,6 +243,7 @@ export default function WithdrawScreen() {
             placeholderTextColor={colors.mutedForeground}
             keyboardType="numeric"
             maxLength={10}
+            editable={isWithdrawalOpen}
             value={accountNumber}
             onChangeText={(v) => setAccountNumber(v.replace(/\D/g, ""))}
           />
@@ -226,14 +263,23 @@ export default function WithdrawScreen() {
           {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
 
           <Pressable
-            style={[styles.submitBtn, { backgroundColor: colors.primary, borderRadius: colors.radius, opacity: withdrawMutation.isPending || !resolvedName ? 0.6 : 1 }]}
+            style={[
+              styles.submitBtn,
+              {
+                backgroundColor: colors.primary,
+                borderRadius: colors.radius,
+                opacity: !isWithdrawalOpen || withdrawMutation.isPending || !resolvedName ? 0.6 : 1,
+              },
+            ]}
             onPress={handleWithdraw}
-            disabled={withdrawMutation.isPending || !resolvedName}
+            disabled={!isWithdrawalOpen || withdrawMutation.isPending || !resolvedName}
           >
             {withdrawMutation.isPending ? (
               <ActivityIndicator color={colors.primaryForeground} />
             ) : (
-              <Text style={[styles.submitBtnText, { color: colors.primaryForeground }]}>Confirm Bank Payout</Text>
+              <Text style={[styles.submitBtnText, { color: colors.primaryForeground }]}>
+                {isWithdrawalOpen ? "Confirm Bank Payout" : "Withdrawals Closed"}
+              </Text>
             )}
           </Pressable>
 
@@ -259,9 +305,12 @@ const styles = StyleSheet.create({
   balanceLabel: { fontSize: 12 },
   balanceValue: { fontSize: 28, fontWeight: "700", marginTop: 4 },
   sectionLabel: { fontSize: 13, fontWeight: "600", marginBottom: 8 },
-  walletToggle: { flexDirection: "row", gap: 10, marginBottom: 20 },
+  walletToggle: { flexDirection: "row", gap: 10, marginBottom: 16 },
   walletOption: { flex: 1, height: 44, alignItems: "center", justifyContent: "center", borderWidth: 1.5 },
   walletOptionText: { fontSize: 13, fontWeight: "600" },
+  lockedCard: { flexDirection: "row", gap: 12, padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 20, alignItems: "center" },
+  lockedTitle: { fontSize: 14, fontWeight: "700" },
+  lockedSub: { fontSize: 12, marginTop: 2, lineHeight: 17 },
   amountWrap: { flexDirection: "row", alignItems: "center", height: 60, borderWidth: 1, paddingHorizontal: 16, marginBottom: 4 },
   nairaSign: { fontSize: 24, marginRight: 4 },
   amountInput: { flex: 1, fontSize: 26, fontWeight: "600" },

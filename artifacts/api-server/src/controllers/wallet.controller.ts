@@ -5,6 +5,7 @@ import { UserRepository } from "../repositories/user.repository.js";
 import { EmailService } from "../services/emailService.js";
 import { XpressService, toHttpError, FEE_SCHEDULE } from "../services/xpress.service.js";
 import { createError } from "../middlewares/error.js";
+import { computeEidWindow } from "../services/eidCalendar.service.js";
 
 function walletType(req: AuthRequest): "adha" | "fitr" {
   const type = req.params["type"] as "adha" | "fitr";
@@ -17,12 +18,10 @@ export const WalletController = {
     res.json(await WalletService.getWallet(req.userId!, walletType(req)));
   },
 
-  /** Replaces Paystack "init": returns the user's own Providus account and records which wallet new deposits should fund. */
   async getDepositAccount(req: AuthRequest, res: Response): Promise<void> {
     res.json(await WalletService.getDepositAccount(req.userId!, walletType(req)));
   },
 
-  /** Replaces Paystack "verify": pulls new bank-transfer credits from Xpress and credits the ledger (idempotent). */
   async syncDeposits(req: AuthRequest, res: Response): Promise<void> {
     walletType(req);
     res.json(await WalletService.syncDeposits(req.userId!));
@@ -30,6 +29,16 @@ export const WalletController = {
 
   async withdraw(req: AuthRequest, res: Response): Promise<void> {
     const type = walletType(req);
+
+    // Enforce 1 month before / 1 week after window
+    const windowInfo = computeEidWindow(type, new Date());
+    if (!windowInfo.isWithdrawalOpen) {
+      throw createError(
+        `Withdrawals for ${type === "adha" ? "Eid al-Adha" : "Eid al-Fitr"} are closed. The withdrawal window opens on ${windowInfo.withdrawalOpensAt} (1 month before Eid) and closes on ${windowInfo.withdrawalClosesAt} (1 week after Eid).`,
+        403
+      );
+    }
+
     const tx = await WalletService.withdraw(req.userId!, type, req.body);
 
     if (tx.status === "success") {
@@ -67,7 +76,7 @@ export const WalletController = {
   async resolveAccount(req: AuthRequest, res: Response): Promise<void> {
     const bankCode = String(req.query["bankCode"] ?? "");
     const accountNumber = String(req.query["accountNumber"] ?? "");
-    if (!/^\d{3,6}$/.test(bankCode) || !/^\d{10}$/.test(accountNumber)) {
+    if (!/^\d{3,6}$/.test(bankCode) \vert{}\vert{} !/^\d{10}$/.test(accountNumber)) {
       throw createError("Enter a valid bank and 10-digit account number", 400);
     }
     try {
