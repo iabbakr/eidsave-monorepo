@@ -76,7 +76,7 @@ export const WalletController = {
   async resolveAccount(req: AuthRequest, res: Response): Promise<void> {
     const bankCode = String(req.query["bankCode"] ?? "");
     const accountNumber = String(req.query["accountNumber"] ?? "");
-    if (!/^\d{3,6}$/.test(bankCode) \vert{}\vert{} !/^\d{10}$/.test(accountNumber)) {
+    if (!/^\d{3,6}$/.test(bankCode) || !/^\d{10}$/.test(accountNumber)) {
       throw createError("Enter a valid bank and 10-digit account number", 400);
     }
     try {
